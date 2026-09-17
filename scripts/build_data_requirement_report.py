@@ -107,6 +107,35 @@ def draw_learning_curve(curve: list[dict[str, float]], baseline_mae: float) -> P
     return CHART_PATH
 
 
+def transfer_summary(transfer: list[dict]) -> dict[str, object]:
+    """State what the transfer numbers support, rather than asserting a headline.
+
+    Two claims are possible and only one is guaranteed: pre-training may beat
+    real-only at the SAME volume, and it may also beat a LARGER real-only run.
+    Which of those holds moves with the data, so both are recomputed.
+    """
+    by_strategy = {row["strategy"]: row for row in transfer}
+    fractions = (0.25, 0.5, 1.0)
+    pretrained = {f: by_strategy[f"합성 사전학습 + 실데이터 보정 ({f:.0%})"] for f in fractions}
+    real_only = {f: by_strategy[f"실데이터만 ({f:.0%})"] for f in fractions}
+    same_volume_wins = [f for f in fractions if pretrained[f]["mae"] < real_only[f]["mae"]]
+    # The largest saving: pre-training on `small` real data beating `large` real-only.
+    savings = [
+        (small, large)
+        for small in fractions
+        for large in fractions
+        if small < large and pretrained[small]["mae"] < real_only[large]["mae"]
+    ]
+    best_saving = max(savings, key=lambda pair: pair[1] / pair[0]) if savings else None
+    return {
+        "pretrained": pretrained,
+        "real_only": real_only,
+        "always_better": len(same_volume_wins) == len(fractions),
+        "same_volume_wins": same_volume_wins,
+        "best_saving": best_saving,
+    }
+
+
 def build_pages(study: dict, font_set: dict) -> list[Path]:
     curve = study["curve"]
     marker = saturation_point(curve)
@@ -153,7 +182,8 @@ def build_pages(study: dict, font_set: dict) -> list[Path]:
             ["결과 안정성", f"{int(stability['festivals'])}회", f"{stability['mae']:.2f}", f"±{stability['mae_std']:.2f}"],
         ],
         [420, 420, 320, 340],
-        highlight=1,
+        # Highlight whichever criterion is the binding one, not a fixed row.
+        highlight=0 if recommended["festivals"] == marker["festivals"] else 1,
     )
     page.body(
         f"둘 중 큰 값인 {int(recommended['festivals'])}회를 준비 기준으로 삼는다. "
@@ -211,13 +241,29 @@ def build_pages(study: dict, font_set: dict) -> list[Path]:
         row_height=48,
         highlight=best_transfer,
     )
-    half = next(r for r in transfer if r["strategy"].startswith("합성 사전학습") and "50%" in r["strategy"])
-    full_real = next(r for r in transfer if r["strategy"].startswith("실데이터만") and "100%" in r["strategy"])
-    page.body(
-        f"합성 사전학습에 실데이터 절반을 얹은 구성(MAE {half['mae']:.2f})이 "
-        f"실데이터 전량 단독 학습(MAE {full_real['mae']:.2f})보다 낫다. "
-        "합성 데이터가 실데이터 요구량을 대략 절반으로 줄인다는 뜻이다."
-    )
+    summary = transfer_summary(transfer)
+    sentences = []
+    if summary["always_better"]:
+        sentences.append(
+            "같은 양의 실데이터를 쓸 때 합성 사전학습을 얹은 쪽이 모든 구간에서 낫다."
+        )
+    else:
+        wins = " · ".join(f"{f:.0%}" for f in summary["same_volume_wins"])
+        sentences.append(f"같은 양의 실데이터 기준으로는 {wins} 구간에서 사전학습이 낫다.")
+    saving = summary["best_saving"]
+    if saving:
+        small, large = saving
+        sentences.append(
+            f"실데이터 {small:.0%}에 사전학습을 얹은 구성"
+            f"(MAE {summary['pretrained'][small]['mae']:.2f})이 실데이터 {large:.0%} 단독 학습"
+            f"(MAE {summary['real_only'][large]['mae']:.2f})보다 낫다. 이 구간에서는 합성 데이터가 "
+            f"실데이터 요구량을 약 {large / small:.0f}분의 1로 줄인다."
+        )
+    else:
+        sentences.append(
+            "다만 더 적은 실데이터로 더 많은 실데이터를 이기는 구간은 이번 실행에서 나타나지 않았다."
+        )
+    page.body(" ".join(sentences))
     page.heading("5. 운영 계획으로 옮기면")
     page.bullets([
         f"사전 학습: 합성 축제 {int(recommended['festivals'])}회 이상으로 출시 전 모델을 준비한다.",

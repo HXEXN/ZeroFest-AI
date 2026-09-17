@@ -70,7 +70,7 @@ GAPS = [
 
 def _metrics() -> dict[str, object]:
     """Recompute every number quoted in the report from the generated files."""
-    from models.demand_model import FEATURES, load_historical_data, uncensored
+    from models.demand_model import FEATURES, MODEL_PARAMS, load_historical_data, uncensored
     from sklearn.ensemble import GradientBoostingRegressor
     from sklearn.metrics import mean_absolute_error, r2_score
 
@@ -81,9 +81,7 @@ def _metrics() -> dict[str, object]:
 
     train = usable[usable["festival_year"] < usable["festival_year"].max()]
     test = usable[usable["festival_year"] == usable["festival_year"].max()]
-    model = GradientBoostingRegressor(
-        random_state=42, n_estimators=120, max_depth=3, learning_rate=0.045, loss="huber"
-    )
+    model = GradientBoostingRegressor(**MODEL_PARAMS)
     model.fit(train[FEATURES], train["future_sales_30m"])
     predicted = model.predict(test[FEATURES])
     actual = test["future_sales_30m"]
