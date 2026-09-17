@@ -20,3 +20,4 @@ outputs/*
 !outputs/ZeroFest_데이터_요구량_검증_보고서.docx
 .docx_work/
 .viz_preview/
+.claude/

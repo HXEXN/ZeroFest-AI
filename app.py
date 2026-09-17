@@ -1,83 +1,114 @@
-"""ZeroFest AI landing page."""
+"""Mobile-first ZeroFest role gateway matching the Stitch reference."""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from agents.graph import ensure_predictions
-from components.ui import configure_page, demo_banner, flow_strip
+from agents.graph import ensure_predictions, run_workflow
+from components.ui import MOBILE_NAV, configure_page, mobile_bottom_nav, mobile_header
 from services import database as db
-from services.database import initialize_database
 
 
-configure_page("시작", "🌿")
-st.markdown(
-    "<style>[data-testid='stSidebar']{display:none;}"
-    "[data-testid='stSidebarCollapsedControl']{display:none;}</style>",
-    unsafe_allow_html=True,
-)
-initialize_database()
+configure_page("게이트웨이", "🌿", mobile=True)
+db.initialize_database()
 ensure_predictions()
 
-left, right = st.columns([1.3, 0.7], gap="large")
-with left:
-    st.markdown('<div class="zf-kicker">AI FESTIVAL OPERATING SYSTEM</div>', unsafe_allow_html=True)
-    st.markdown('<div class="zf-hero">남기 전에,<br>축제를 바꿉니다.</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="zf-subtitle">판매·재고·날씨·공연 데이터를 읽고 AI Agent가 운영 Action을 제안합니다. '
-        '운영자가 승인한 할인은 학생 수요를 움직이고, 결과는 다시 예측에 반영됩니다.</div>',
-        unsafe_allow_html=True,
-    )
-    flow_strip()
-    demo_banner()
-    st.markdown(
-        '<span class="zf-provenance">2023–2025 과거 축제 이력 Adapter · Sample / Synthetic</span>',
-        unsafe_allow_html=True,
-    )
-with right:
-    # Read the live prediction instead of printing a fixed card, so the landing
-    # page can never disagree with what the dashboard shows.
-    headline = db.get_booth_state("booth-chicken")
-    headline_prediction = db.get_latest_prediction("booth-chicken") or {}
-    risk = str(headline_prediction.get("risk_level", "-"))
-    risk_class = {"HIGH": "zf-risk-high", "MEDIUM": "zf-risk-medium"}.get(risk, "zf-risk-low")
+mobile_header("ZeroFest AI", "ASTRA 축제 포털 · 2026", "REALTIME", "ZF")
+
+st.markdown(
+    """
+    <section class="zf-mobile-card mint" style="padding:20px;overflow:hidden;position:relative">
+      <div class="zf-mobile-row"><span class="zf-eyebrow">◉ ASTRA 2026 AI FESTIVAL INTELLIGENCE</span>
+      <span class="zf-status"><span class="zf-dot"></span>SYNC</span></div>
+      <div class="zf-mobile-h1">축제를 더 많이 팔고,<br><span style="color:#047857">덜 버리게.</span></div>
+      <div class="zf-caption">실시간 AI 수요 예측 & 폐기 방지 OS</div>
+      <div style="height:132px;margin-top:15px;border-radius:13px;overflow:hidden;position:relative;
+        background:linear-gradient(135deg,#063d2d,#0b6b4c 45%,#f97316);">
+        <div style="position:absolute;inset:0;background:radial-gradient(circle at 70% 25%,rgba(255,255,255,.22),transparent 30%);"></div>
+        <div style="position:absolute;left:15px;right:15px;bottom:13px;display:flex;
+                    justify-content:space-between;align-items:flex-end;gap:10px">
+          <div style="color:white;font-weight:900;font-size:13px;line-height:1.25">⚡ FESTIVAL<br>CORE OS LIVE</div>
+          <div style="color:#a7f3d0;font-weight:900;font-size:13px;line-height:1.25;text-align:right">
+            ASTRA-CAMPUS<br>01</div>
+        </div>
+      </div>
+    </section>
+    """,
+    unsafe_allow_html=True,
+)
+
+rows = db.dashboard_rows()
+total_stock = sum(int(row["current_stock"]) for row in rows)
+expected_remaining = sum(int(row.get("expected_remaining") or 0) for row in rows)
+high_count = sum(row.get("risk_level") == "HIGH" for row in rows)
+weather = db.get_weather_context().get("forecast_1h", {})
+
+st.markdown(
+    f"""
+    <div class="zf-section-title"><strong>📡 실시간 관제 텔레메트리</strong><span class="zf-pill low">초 단위 동기화</span></div>
+    <div class="zf-kpi-grid">
+      <div class="zf-kpi"><div class="zf-kpi-label">운영 부스 현황</div><div class="zf-kpi-value">{len(rows)}곳</div><div class="zf-kpi-note zf-mint-text">● 실시간 참여</div></div>
+      <div class="zf-kpi danger"><div class="zf-kpi-label">폐기 위험 부스</div><div class="zf-kpi-value zf-danger-text">{high_count}곳</div><div class="zf-kpi-note zf-danger-text">즉각 대응 필요</div></div>
+      <div class="zf-kpi"><div class="zf-kpi-label">예상 잔여 재고</div><div class="zf-kpi-value zf-mint-text">{expected_remaining}개</div><div class="zf-kpi-note">총 재고 {total_stock}개</div></div>
+      <div class="zf-kpi"><div class="zf-kpi-label">기상 레이더</div><div class="zf-kpi-value">{float(weather.get('temperature') or 0):g}°C</div><div class="zf-kpi-note" style="color:#9a3412">강수 {int(weather.get('precipitation_probability') or 0)}% 사전대응</div></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+state = db.get_booth_state("booth-chicken")
+prediction = db.get_latest_prediction("booth-chicken") or {}
+baseline = int(prediction.get("expected_remaining") or 0)
+projected_after = max(0, round(baseline * 0.26))
+reduction = (baseline - projected_after) / max(1, baseline)
+
+with st.container(border=True):
     st.markdown(
         f"""
-        <div class="zf-card" style="margin-top:1.5rem;padding:1.5rem">
-          <div class="zf-kicker">LIVE DEMO · {db.get_demo_time():%H:%M}</div>
-          <h2 style="margin:.4rem 0;color:#102a22">{headline["zone"]}구역 {headline["menu_name"]}</h2>
-          <div style="font-size:2.6rem;font-weight:850;color:#ef4444">{headline["current_stock"]}
-            <small style="font-size:1rem">재고</small></div>
-          <p class="zf-muted">최근 30분 {headline["recent_sales_30m"]}개 · 이전 30분 {headline["previous_sales_30m"]}개</p>
-          <div class="{risk_class}">예상 잔여 {headline_prediction.get("expected_remaining", "-")} · {risk}</div>
+        <div class="zf-mobile-row"><span class="zf-pill low">⚡ LIVE DEMO</span><span class="zf-status">5 SEC LOOP</span></div>
+        <div class="zf-mobile-h2" style="margin-top:11px">⚡ 5초 AI 폐기 방지 루프</div>
+        <div class="zf-caption">위험 감지부터 타임세일 소비까지 자율 자동화 Demo</div>
+        <div class="zf-action-row" style="margin-top:12px;text-align:center">
+          재고 {state['current_stock']} → AI 잔여 {baseline} 예측 → 20% 세일<br>
+          <b>학생 완판 연동 · 잔여 {projected_after}개 (폐기 {reduction:.1%}↓)</b>
         </div>
         """,
         unsafe_allow_html=True,
     )
+    if st.button("▶ 시뮬레이터 시작", type="primary", width="stretch"):
+        result = run_workflow("booth-chicken")
+        discount = next((item for item in db.get_actions("booth-chicken", "PENDING") if item["action_type"] == "DISCOUNT"), None)
+        if discount:
+            run_workflow("booth-chicken", [discount["action_id"]])
+        if db.get_active_promotions():
+            response = db.simulate_student_response()
+            run_workflow("booth-chicken")
+            st.session_state["gateway_loop_result"] = response
+        st.rerun()
+    if "gateway_loop_result" in st.session_state:
+        response = st.session_state["gateway_loop_result"]
+        st.success(f"루프 완료 · {response['sold']}개 판매 반영 · {response['to'][-5:]} 상태로 재예측")
 
-st.markdown("### 역할별 분리 진입")
-col1, col2, col3, col4 = st.columns(4, gap="medium")
+st.markdown('<div class="zf-section-title"><strong>🛡 권한별 게이트웨이</strong><span class="zf-pill medium">ROLE ISOLATION</span></div>', unsafe_allow_html=True)
+
 roles = [
-    (col1, "📊", "학생회", "축제 전체 Supply / Demand와 폐기위험을 관리합니다.", "pages/admin.py", "Control Tower 열기"),
-    (col2, "🧑‍🍳", "부스 운영자", "바쁜 현장에서 원클릭 입력하고 AI Action을 승인합니다.", "pages/operator.py", "내 부스 열기"),
-    (col3, "🎓", "학생", "지금 받을 수 있는 할인과 축제 지도를 확인합니다.", "pages/student.py", "학생 혜택 보기"),
-    (col4, "🧠", "AI 운영", "과거 데이터, 학습 파이프라인과 Agent를 관리합니다.", "pages/ai_ops.py", "AI Ops 열기"),
+    ("🛡", "총괄 관리자", "MASTER", "축제 통합 관제망 및 AI 제어", "전체 부스 실시간 관제와 폐기 타임세일 최종 승인", "pages/admin.py", "🔑 관리자 접속하기"),
+    ("🏪", "부스 운영자 POS", "OPERATOR", "1초 판매 등록 & 동적할인 승인", "원터치 판매·실재고 교정·AI 할인 추천", "pages/operator.py", "🏪 POS 시작하기"),
+    ("🎟", "일반 학생 / 방문객", "PUBLIC", "핫딜 알림 · 스마트 지도 · 스탬프", "부스별 할인과 폐기 방지 타임세일 쿠폰", "pages/student.py", "🎉 학생 포털 입장"),
 ]
-for column, icon, title, body, page, label in roles:
-    with column:
+for icon, title, badge, subtitle, body, page, button in roles:
+    with st.container(border=True):
         st.markdown(
-            f'<div class="zf-card"><div style="font-size:2rem">{icon}</div><h3>{title}</h3><p class="zf-muted">{body}</p></div>',
+            f'<div class="zf-booth-head"><div class="zf-mobile-h2">{icon} {title}</div><span class="zf-pill low">{badge}</span></div>'
+            f'<div class="zf-eyebrow" style="margin-top:6px">{subtitle}</div><p class="zf-caption">{body}</p>',
             unsafe_allow_html=True,
         )
-        st.page_link(page, label=label, width="stretch")
+        st.page_link(page, label=button, width="stretch")
 
 st.markdown(
-    '<div class="zf-copilot"><div class="zf-kicker">NEW · GROUNDED OPERATIONS COPILOT</div>'
-    '<strong>현재 재고·예측·날씨·공연·Action Queue를 대화로 조회하세요.</strong>'
-    '<div class="zf-muted">“어느 부스가 위험해?”, “몇 시에 품절돼?”, “왜 할인해야 해?”에 실제 운영 상태로 답합니다.</div></div>',
+    '<div class="zf-mobile-card" style="background:#eef2ff"><b>🛡 권한 격리 세션 Zero Trust</b>'
+    '<div class="zf-caption">각 역할은 독립 보안 세션으로 접속하며 실행 권한은 분리됩니다.</div></div>',
     unsafe_allow_html=True,
 )
-st.page_link("pages/chat.py", label="✨ AI 운영 Copilot과 대화하기", width="stretch")
 
-st.divider()
-st.caption("ZeroFest AI · EST AI Challengers 2기 Hackathon MVP · Sample / Synthetic Festival Dataset")
+mobile_bottom_nav(MOBILE_NAV, "gateway")

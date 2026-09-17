@@ -6,14 +6,15 @@ import streamlit as st
 
 from agents.graph import ensure_predictions
 from components.map import festival_map
-from components.ui import configure_page, page_header, sidebar
+from components.ui import MOBILE_NAV, configure_page, mobile_bottom_nav, mobile_header, page_header, sidebar
 from services import database as db
 
 
-configure_page("학생", "🎓")
+configure_page("학생", "🎓", mobile=True)
 db.initialize_database()
 ensure_predictions()
 sidebar("학생")
+mobile_header("ZeroFest 학생", "지금 받을 수 있는 혜택과 부스 지도", "혜택 LIVE", "학")
 page_header(
     "STUDENT · BENEFIT FIRST",
     "지금 더 재미있고, 더 알뜰한 축제",
@@ -77,3 +78,5 @@ with tab_stamp:
 
 if promotions:
     st.page_link("pages/simulation.py", label="할인 이후 학생 반응 시뮬레이션 →", icon="🧪")
+
+mobile_bottom_nav(MOBILE_NAV, "student")

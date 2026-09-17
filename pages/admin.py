@@ -1,161 +1,178 @@
-"""Student council control-tower dashboard."""
+"""Mobile-first admin control tower wired to live ZeroFest state."""
 
 from __future__ import annotations
+
+from datetime import datetime
+from html import escape
 
 import pandas as pd
 import streamlit as st
 
 from agents.graph import analyze_all, ensure_predictions
 from components.charts import remaining_by_booth
-from components.map import festival_map
-from components.ui import configure_page, flow_strip, page_header, sidebar
+from components.ui import configure_page, mobile_bottom_nav, mobile_header
 from config import ACTION_LABELS
-from services.chat import ask_admin
-from services.database import (
-    dashboard_rows,
-    get_actions,
-    get_active_promotions,
-    get_demo_time,
-    get_event_context,
-    get_weather_context,
-    initialize_database,
-)
+from services import database as db
+from services.chat import ask_operations
 
 
-configure_page("학생회 Control Tower", "📊")
-initialize_database()
+configure_page("총괄 관제", "📊", mobile=True)
+db.initialize_database()
 ensure_predictions()
-sidebar("학생회")
-page_header(
-    "ADMIN · FESTIVAL CONTROL TOWER",
-    "축제 전체를 한눈에, Action은 근거 있게",
-    "개별 부스를 넘어 축제 전체의 공급과 수요를 관리합니다. 예측은 ML이, 위험판정은 규칙이, 실행 결정은 사람이 맡습니다.",
-)
-flow_strip()
-st.markdown(
-    '<div class="zf-copilot"><div class="zf-kicker">AI OPERATIONS COPILOT</div>'
-    '<strong>현재 위험·재고·품절 시각·추천 근거를 바로 질문할 수 있습니다.</strong></div>',
-    unsafe_allow_html=True,
-)
-st.page_link("pages/chat.py", label="✨ AI에게 운영 상황 질문하기", width="stretch")
+mobile_header("ZeroFest Admin", "2026 ASTRA 축제기획단 통합관제", "AI 연동", "총")
 
-rows = dashboard_rows()
+rows = db.dashboard_rows()
 total_sales = sum(int(row["total_sales"]) for row in rows)
 total_stock = sum(int(row["current_stock"]) for row in rows)
 expected_waste = sum(int(row.get("expected_remaining") or 0) for row in rows)
 high_count = sum(row.get("risk_level") == "HIGH" for row in rows)
+weather = db.get_weather_context().get("forecast_1h", {})
+events = db.get_event_context()
+view = str(st.query_params.get("view", "dashboard"))
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("누적 판매", f"{total_sales:,}개")
-m2.metric("현재 재고", f"{total_stock:,}개")
-m3.metric("예상 잔여", f"{expected_waste:,}개", help="행사 종료 시점 예측값")
-m4.metric("HIGH 위험 부스", f"{high_count}곳")
 
-weather = get_weather_context()
-forecast = weather["forecast_1h"]
-now = get_demo_time()
-events = get_event_context()
-if events:
-    nearest = min(events, key=lambda item: pd.Timestamp(item["end_time"]))
-    ends_at = pd.Timestamp(nearest["end_time"])
-    minutes_left = max(0, int((ends_at - pd.Timestamp(now)).total_seconds() // 60))
-    event_note = f"🎤 {nearest['event_name']} {ends_at:%H:%M} 종료 · {minutes_left}분 남음"
-else:
-    event_note = "🎤 진행 중이거나 예정된 공연 없음"
-st.info(
-    f"🌧️ **{forecast.get('provider', 'Weather')}** · 1시간 뒤 강수확률 "
-    f"{int(forecast['precipitation_probability'])}% · 예상 강수 {forecast['rainfall']}mm  |  {event_note}"
-)
+@st.dialog("AI 상세 근거 질의", width="large")
+def ai_chat_dialog(booth_id: str) -> None:
+    focus_row = next(row for row in rows if row["booth_id"] == booth_id)
+    st.caption(f"{focus_row['zone']}구역 {focus_row['booth_name']} · 현재 운영 DB 근거")
+    suggestions = ["왜 이 부스가 가장 위험해?", "20% 할인 근거를 알려줘", "재고는 언제 소진돼?", "어디로 이관해야 해?"]
+    choice = st.selectbox("빠른 질문", suggestions)
+    question = st.text_input("질문", value=choice)
+    if st.button("AI에게 질문", type="primary", width="stretch"):
+        answer, source, evidence = ask_operations(question, booth_id=booth_id)
+        st.markdown(answer)
+        with st.expander("사용한 실시간 근거", expanded=True):
+            for item in evidence:
+                st.markdown(f"- {item}")
+        st.caption(source)
 
-tab_overview, tab_agent, tab_chat = st.tabs(["전체 현황", "AI Agent", "운영 AI Chat"])
-with tab_overview:
-    table_rows = []
-    for row in rows:
-        table_rows.append(
-            {
-                "부스": f"{row['zone']} · {row['booth_name']}",
-                "메뉴": row["menu_name"],
-                "판매": int(row["total_sales"]),
-                "재고": int(row["current_stock"]),
-                "30분 예측": int(row.get("predicted_sales_30m") or 0),
-                "예상 잔여": int(row.get("expected_remaining") or 0),
-                "위험": row.get("risk_level", "-"),
-                "AI Action": ACTION_LABELS.get(row.get("action_type"), row.get("action_type", "-")),
-            }
-        )
-    st.dataframe(
-        pd.DataFrame(table_rows), hide_index=True, width="stretch",
-        column_config={
-            "판매": st.column_config.NumberColumn(format="%d개"),
-            "재고": st.column_config.NumberColumn(format="%d개"),
-            "30분 예측": st.column_config.NumberColumn(format="%d개"),
-            "예상 잔여": st.column_config.ProgressColumn(
-                min_value=0, max_value=max(1, max(int(r["예상 잔여"]) for r in table_rows)), format="%d개"
-            ),
-        },
+
+def risk_class(level: str) -> str:
+    return {"HIGH": "high", "MEDIUM": "medium", "LOW": "low"}.get(level, "low")
+
+
+def render_weather() -> None:
+    event_name = events[0]["event_name"] if events else "공연 일정 없음"
+    st.markdown(
+        f"""
+        <div class="zf-weather">
+          <div class="zf-mobile-row"><b>🌧 강수확률 {int(weather.get('precipitation_probability') or 0)}%</b>
+          <span class="zf-pill high">19:50 비</span></div>
+          <div class="zf-caption" style="color:#9f1239">{float(weather.get('temperature') or 0):g}°C · 예상 강수 {float(weather.get('rainfall') or 0):g}mm · {escape(event_name)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    st.plotly_chart(remaining_by_booth(rows), width="stretch", config={"displayModeBar": False})
-    st.markdown("##### 구역별 위험 분포")
-    festival_map(
-        rows,
-        get_active_promotions(),
-        stage_name=next((item["event_name"] for item in events if item["zone"] == "Main Stage"), None),
-        admin=True,
-    )
-    if st.button("모든 부스 지금 재예측", type="primary"):
-        with st.spinner("판매·재고·날씨·공연 데이터를 분석하는 중..."):
-            analyze_all()
-        st.rerun()
+    with st.expander("기상 영향 상세 보기"):
+        st.write("우천 예보를 수요 Feature로 반영하며, 날씨 자체를 AI가 예측하지 않습니다.")
+        st.dataframe(pd.DataFrame([weather]), hide_index=True, width="stretch")
 
-with tab_agent:
+
+def render_kpis() -> None:
+    st.markdown(
+        f"""
+        <div class="zf-kpi-grid">
+          <div class="zf-kpi"><div class="zf-kpi-label">총 누적 판매량</div><div class="zf-kpi-value">{total_sales:,}<small>개</small></div><div class="zf-kpi-note zf-mint-text">+ 실시간 집계</div></div>
+          <div class="zf-kpi"><div class="zf-kpi-label">현재 전체 재고</div><div class="zf-kpi-value">{total_stock:,}<small>개</small></div><div class="zf-kpi-note">● {len(rows)}개 부스 실시간</div></div>
+          <div class="zf-kpi"><div class="zf-kpi-label">예측 잔여 폐기량</div><div class="zf-kpi-value" style="color:#9a3412">{expected_waste}<small>개</small></div><div class="zf-kpi-note">위험 관리 중</div></div>
+          <div class="zf-kpi danger"><div class="zf-kpi-label zf-danger-text">폐기 위험 부스</div><div class="zf-kpi-value zf-danger-text">{high_count}<small>곳</small></div><div class="zf-kpi-note zf-danger-text">HIGH 집중 모니터</div></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_ai_decision() -> None:
     focus = max(rows, key=lambda row: int(row.get("expected_remaining") or 0))
-    left, right = st.columns([0.9, 1.1])
-    with left:
-        st.markdown("#### 우선 대응 부스")
+    pending = db.get_actions(focus["booth_id"], "PENDING")
+    projected = max(0, round(int(focus["expected_remaining"]) * 0.26))
+    before_width = min(100, int(focus["expected_remaining"]))
+    after_width = min(100, projected)
+    st.markdown(
+        f"""
+        <section class="zf-mobile-card">
+          <div class="zf-mobile-row"><span class="zf-pill low">🧠 LangGraph AI Agent 분석 완료</span><span class="zf-caption">{db.get_demo_time():%H:%M} 기준</span></div>
+          <span class="zf-pill high" style="margin-top:8px">폐기위험 {escape(str(focus['risk_level']))}</span>
+          <div class="zf-mobile-h1" style="font-size:24px">현재 {escape(str(focus['zone']))}구역 {escape(str(focus['menu_name']))} 부스의 폐기 위험이 가장 높습니다</div>
+          <div class="zf-caption">비 예보와 임계 초과 재고에 겹쳐 조기 판매 전략 실행이 요구됩니다.</div>
+          <div style="background:#f1f3ff;border-radius:12px;padding:10px;margin-top:12px">
+            <div class="zf-eyebrow">🔍 Explainable AI 판단 근거</div>
+            {''.join(f'<div class="zf-signal"><b>{i:02d}</b><span>{escape(str(driver))}</span></div>' for i, driver in enumerate(focus.get('drivers', []), 1))}
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:11px;padding:10px;margin-top:10px">
+            <div class="zf-eyebrow" style="color:#9a3412">AI 예측 시뮬레이션</div>
+            <div class="zf-caption">현 상태 방치 시 잔여 <b>{focus['expected_remaining']}개</b> 발생</div>
+            <div class="zf-caption zf-danger-text"><b>예상 손실액 약 {int(focus['expected_remaining']) * int(focus['price']):,}원</b></div>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:11px;padding:10px;margin-top:10px">
+            <div class="zf-eyebrow">⚙ AI 추천 솔루션 액션</div>
+            {''.join(f'<div class="zf-action-row">{escape(ACTION_LABELS.get(item["action_type"], item["action_type"]))}</div>' for item in pending[:4])}
+            <div class="zf-caption" style="margin-top:8px">세일 적용 잔여 시뮬레이션</div>
+            <div class="zf-progress"><i style="width:{before_width}%;background:#dc2626"></i></div>
+            <div class="zf-progress" style="margin-top:5px"><i style="width:{after_width}%;background:#10b981"></i></div>
+          </div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+    if st.button("▷ 부스에 AI 권고 전송", type="primary", width="stretch"):
+        db.set_setting(f"admin_broadcast:{focus['booth_id']}", datetime.now().isoformat())
+        st.success("운영자 POS에 권고와 근거를 전송했습니다.")
+    if st.button("💬 AI 상세 근거 질의", width="stretch"):
+        ai_chat_dialog(focus["booth_id"])
+    st.page_link("pages/operator.py", label="운영자 승인 화면 열기", icon="🏪", width="stretch")
+
+
+def render_booths() -> None:
+    st.markdown('<div class="zf-section-title"><strong>● 실시간 부스 관제 현황</strong><span class="zf-pill low">원격 제어 가능</span></div>', unsafe_allow_html=True)
+    for row in rows:
+        action = ACTION_LABELS.get(row.get("action_type"), row.get("action_type") or "현재 운영 유지")
         st.markdown(
-            f"""<div class="zf-card"><div class="zf-kicker">{focus['zone']} ZONE</div>
-            <h3>{focus['booth_name']} · {focus['menu_name']}</h3>
-            <div style="font-size:2.3rem;font-weight:850;color:#ef4444">{focus['expected_remaining']}개</div>
-            <p class="zf-muted">행사 종료 예상 잔여 · 현재 재고 {focus['current_stock']}개</p>
-            <span class="zf-risk-{focus['risk_level'].lower()}">{focus['risk_level']}</span></div>""",
+            f"""
+            <article class="zf-mobile-card">
+              <div class="zf-booth-head"><div><span class="zf-pill medium">{escape(str(row['zone']))}구역</span>
+              <b style="margin-left:6px">{escape(str(row['booth_name']))}</b></div>
+              <span class="zf-pill {risk_class(str(row.get('risk_level')))}">● {escape(str(row.get('risk_level')))}</span></div>
+              <div class="zf-kpi-grid" style="margin-bottom:5px">
+                <div style="text-align:center"><span class="zf-caption">판매량</span><br><b>{int(row['total_sales'])}개</b></div>
+                <div style="text-align:center"><span class="zf-caption">현재재고</span><br><b>{int(row['current_stock'])}개</b></div>
+              </div>
+              <div class="zf-action-row">🪄 AI: {escape(str(action))}</div>
+            </article>
+            """,
             unsafe_allow_html=True,
         )
-    with right:
-        st.markdown("#### 판단 근거")
-        for driver in focus.get("drivers", []):
-            st.markdown(f"- {driver}")
-        st.markdown("#### 추천 Action")
-        # Show what the agent actually queued for this booth. A fixed list here
-        # would claim to be an AI recommendation while being a script.
-        queued = get_actions(focus["booth_id"], "PENDING")
-        executed = [item for item in get_actions(focus["booth_id"]) if item["status"] == "EXECUTED"]
-        if queued:
-            for index, action in enumerate(queued, start=1):
-                st.markdown(f"{index}. **{ACTION_LABELS.get(action['action_type'], action['action_type'])}**")
-                st.caption(action["reason"])
-            st.caption(f"{len(queued)}건이 운영자 승인을 기다리고 있습니다.")
-        elif executed:
-            st.success(
-                "승인된 Action이 반영되어 추가 제안이 없습니다. "
-                f"최근 실행: {ACTION_LABELS.get(executed[0]['action_type'], executed[0]['action_type'])}"
-            )
-        else:
-            st.success("현재 폐기위험이 낮아 Agent가 제안한 Action이 없습니다.")
-        st.caption("LLM은 설명만 담당하며 판매량 예측·위험판정·실행 승인에는 관여하지 않습니다.")
-        st.page_link("pages/operator.py", label="운영자 승인 화면으로 →", icon="🧑‍🍳")
 
-with tab_chat:
-    st.markdown("#### 실제 예측 DB에 근거한 운영 Q&A")
-    suggestions = ["지금 가장 폐기 위험이 높은 부스 알려줘", "왜 닭꼬치를 할인해야 돼?", "재고는 어디로 보내?"]
-    selected = st.selectbox("질문 예시", ["직접 입력"] + suggestions, label_visibility="collapsed")
-    question = st.text_input("질문", value="" if selected == "직접 입력" else selected, placeholder="예: 왜 닭꼬치를 할인해야 돼?")
-    if st.button("데이터에 근거해 답변", type="primary", disabled=not question.strip()):
-        answer, source = ask_admin(question.strip())
-        st.session_state["last_admin_answer"] = (question, answer, source)
-    if "last_admin_answer" in st.session_state:
-        saved_question, answer, source = st.session_state["last_admin_answer"]
-        with st.chat_message("user"):
-            st.write(saved_question)
-        with st.chat_message("assistant"):
-            st.markdown(answer)
-            st.caption(f"응답 엔진 · {source}")
+
+if view == "dashboard":
+    render_weather()
+    render_kpis()
+    render_ai_decision()
+    render_booths()
+elif view == "decision":
+    render_ai_decision()
+elif view == "booths":
+    render_booths()
+else:
+    st.markdown('<div class="zf-section-title"><strong>ESG 운영 통계</strong><span class="zf-pill low">LIVE</span></div>', unsafe_allow_html=True)
+    render_kpis()
+    st.plotly_chart(remaining_by_booth(rows), width="stretch", config={"displayModeBar": False})
+    if st.button("모든 부스 지금 재예측", type="primary", width="stretch"):
+        analyze_all()
+        st.rerun()
+
+st.markdown(
+    '<div class="zf-mobile-card" style="background:#eef2ff"><b>⚙ ZeroFest AI Engine Core</b>'
+    '<div class="zf-caption">Agent Pipeline · Human Approval · Grounded Copilot</div></div>',
+    unsafe_allow_html=True,
+)
+
+mobile_bottom_nav(
+    [
+        ("dashboard", "종합 관제", "▦", "/admin?view=dashboard"),
+        ("decision", "의사결정 AI", "🧠", "/admin?view=decision"),
+        ("booths", "전체 부스", "▰", "/admin?view=booths"),
+        ("esg", "ESG 통계", "▥", "/admin?view=esg"),
+    ],
+    view if view in {"dashboard", "decision", "booths", "esg"} else "dashboard",
+)

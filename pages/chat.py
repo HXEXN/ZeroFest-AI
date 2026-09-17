@@ -5,15 +5,16 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.graph import ensure_predictions
-from components.ui import configure_page, page_header, risk_badge, sidebar
+from components.ui import MOBILE_NAV, configure_page, mobile_bottom_nav, mobile_header, page_header, risk_badge, sidebar
 from services import database as db
 from services.chat import ask_operations
 
 
-configure_page("AI 운영 Copilot", "✨")
+configure_page("AI 운영 Copilot", "✨", mobile=True)
 db.initialize_database()
 ensure_predictions()
 sidebar("AI 운영 Copilot")
+mobile_header("ZeroFest Copilot", "운영 DB에 근거한 즉답", "GROUNDED", "AI")
 page_header(
     "ZERO FEST AI · GROUNDED COPILOT",
     "묻는 즉시, 현재 운영 데이터로 답합니다",
@@ -95,3 +96,5 @@ with bottom_right:
     st.page_link("pages/operator.py", label="추천 Action 승인 화면 →", icon="🧑‍🍳", width="stretch")
 
 st.info("안전장치 · 채팅은 설명만 제공합니다. 할인·조리 중단·재고 이동은 운영자 화면에서 승인해야 실행됩니다.")
+
+mobile_bottom_nav(MOBILE_NAV, "chat")

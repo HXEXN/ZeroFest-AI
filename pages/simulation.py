@@ -10,16 +10,17 @@ import streamlit as st
 
 from agents.graph import ensure_predictions, run_workflow
 from components.charts import before_after
-from components.ui import configure_page, flow_strip, page_header, sidebar
+from components.ui import MOBILE_NAV, configure_page, flow_strip, mobile_bottom_nav, mobile_header, page_header, sidebar
 from services import database as db
 
 
 BOOTH_ID = "booth-chicken"
 
-configure_page("Before / After", "🧪")
+configure_page("Before / After", "🧪", mobile=True)
 db.initialize_database()
 ensure_predictions()
 sidebar("AI Simulation")
+mobile_header("ZeroFest 시뮬레이터", "예측 → 승인 → 반응 → 재예측", "AI 연동", "시")
 page_header(
     "END-TO-END · JUDGE DEMO",
     "예측에서 끝나지 않는 Closed Loop",
@@ -117,3 +118,5 @@ st.caption(
     "한 번의 할인으로 위험이 사라지지는 않습니다. 모델이 학습한 할인 탄력성 기준으로 "
     "예상 잔여가 얼마나 줄어드는지를 보여주고, 루프는 새 상태에서 다시 반복됩니다."
 )
+
+mobile_bottom_nav(MOBILE_NAV, "simulation")

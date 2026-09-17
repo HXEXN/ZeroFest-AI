@@ -6,12 +6,12 @@ import streamlit as st
 from datetime import datetime
 
 from agents.graph import ensure_predictions, run_workflow
-from components.ui import configure_page, page_header, risk_badge, sidebar
+from components.ui import MOBILE_NAV, configure_page, mobile_bottom_nav, mobile_header, page_header, risk_badge, sidebar
 from config import ACTION_LABELS
 from services import database as db
 
 
-configure_page("부스 운영자", "🧑‍🍳")
+configure_page("부스 운영자", "🧑‍🍳", mobile=True)
 st.markdown(
     "<style>div.stButton>button{min-height:56px;font-size:.96rem}"
     "button[kind='primary']{background:#9a3412!important;border-color:#9a3412!important}</style>",
@@ -20,6 +20,7 @@ st.markdown(
 db.initialize_database()
 ensure_predictions()
 sidebar("부스 운영자")
+mobile_header("ZeroFest POS", "원터치 주문 입력과 Action 승인", "POS LIVE", "POS")
 page_header(
     "OPERATOR · HUMAN IN THE LOOP",
     "바쁜 순간엔, 세 번의 탭이면 충분합니다",
@@ -158,3 +159,5 @@ with st.expander("＋ 새 부스 등록 (P0)"):
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
+
+mobile_bottom_nav(MOBILE_NAV, "")
