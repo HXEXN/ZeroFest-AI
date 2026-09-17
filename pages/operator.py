@@ -210,8 +210,16 @@ with st.container(border=True):
             st.session_state["active_booth_id"] = booth_id
             db.set_setting("active_booth_id", booth_id)
 
+            sync_event = db.publish_pos_sync_event(
+                "sale",
+                booth_id,
+                quantity=quantity,
+            )
+
             st.session_state["operator_notice"] = (
-                f"{quantity}개 판매를 반영했습니다. Simulation에도 자동 반영됩니다."
+                f"{quantity}개 판매 반영 완료 · "
+                f"SYNC {sync_event['event_id']} · "
+                f"rev {sync_event['revision_after_event']}"
             )
             st.rerun()
 
@@ -226,6 +234,11 @@ with st.container(border=True):
         run_workflow(booth_id)
         st.session_state["active_booth_id"] = booth_id
         db.set_setting("active_booth_id", booth_id)
+        db.publish_pos_sync_event(
+            "stock_minus",
+            booth_id,
+            quantity=-10,
+        )
         st.rerun()
 
     if stock_cols[1].button(
@@ -237,6 +250,11 @@ with st.container(border=True):
         run_workflow(booth_id)
         st.session_state["active_booth_id"] = booth_id
         db.set_setting("active_booth_id", booth_id)
+        db.publish_pos_sync_event(
+            "stock_plus",
+            booth_id,
+            quantity=10,
+        )
         st.rerun()
 
     with st.form(f"exact-stock-{booth_id}"):
@@ -260,9 +278,15 @@ with st.container(border=True):
 
             st.session_state["active_booth_id"] = booth_id
             db.set_setting("active_booth_id", booth_id)
+            sync_event = db.publish_pos_sync_event(
+                "stock_set",
+                booth_id,
+                quantity=int(exact_stock),
+            )
 
             st.session_state["operator_notice"] = (
-                f"실재고를 {int(exact_stock)}개로 교정했습니다."
+                f"실재고 {int(exact_stock)}개 적용 · "
+                f"SYNC {sync_event['event_id']}"
             )
             st.rerun()
 
@@ -509,6 +533,44 @@ with st.expander(
                 st.error(
                     str(exc)
                 )
+
+
+st.divider()
+with st.expander("🔄 POS ↔ Simulation 동기화 상태", expanded=False):
+    sync_status = db.sqlite_sync_status()
+    last_sync_event = db.get_last_pos_sync_event()
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric(
+        "SQLite",
+        str(sync_status.get("journal_mode", "-")).upper(),
+    )
+    s2.metric(
+        "DB Revision",
+        str(sync_status.get("runtime_revision", "-")),
+    )
+    s3.metric(
+        "Server",
+        str(sync_status.get("server_instance_id", "-")),
+    )
+
+    if last_sync_event:
+        st.success(
+            f"마지막 POS 이벤트 · {last_sync_event.get('event_id')} · "
+            f"{last_sync_event.get('event_type')} · "
+            f"{last_sync_event.get('booth_id')}"
+        )
+        st.caption(
+            f"판매 {last_sync_event.get('total_sales')}개 · "
+            f"재고 {last_sync_event.get('current_stock')}개 · "
+            f"다음 30분 예측 {last_sync_event.get('predicted_sales_30m')}개"
+        )
+    else:
+        st.info("아직 POS 동기화 이벤트가 없습니다. 판매/재고 버튼을 한 번 눌러주세요.")
+
+    if str(sync_status.get("journal_mode", "")).lower() != "wal":
+        st.error("SQLite WAL 모드가 활성화되지 않았습니다.")
+
 
 mobile_bottom_nav(
     MOBILE_NAV,
