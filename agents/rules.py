@@ -22,6 +22,12 @@ def action_candidates(
         }
     )
     if risk == "MEDIUM":
+        candidates.append(
+            {
+                "action_type": "DISCOUNT",
+                "reason": "폐기위험이 MEDIUM으로 상승해 운영자 승인 후 20% 마감 할인을 선제적으로 검토합니다.",
+            }
+        )
         candidates.append({"action_type": "MONITOR", "reason": "판매 추이를 15분 후 다시 확인합니다."})
         return candidates
 
@@ -50,4 +56,3 @@ def action_candidates(
         }
     )
     return candidates
-
