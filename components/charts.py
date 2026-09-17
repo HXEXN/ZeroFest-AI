@@ -35,7 +35,7 @@ def remaining_by_booth(rows: list[dict[str, Any]]) -> go.Figure:
 def before_after(before: int, after: int) -> go.Figure:
     figure = go.Figure(
         go.Bar(
-            x=["AI Action 전", "AI Action 후"],
+            x=["AI 추천 미적용", "AI 추천 적용"],
             y=[before, after],
             text=[f"{before}개", f"{after}개"],
             textposition="outside",
@@ -44,7 +44,7 @@ def before_after(before: int, after: int) -> go.Figure:
         )
     )
     figure.update_layout(
-        height=340, yaxis_title="종료 시 예상 잔여(개)", yaxis_range=[0, max(before, after) * 1.3],
+        height=340, yaxis_title="22:00 종료 예상 잔여(개)", yaxis_range=[0, max(before, after, 1) * 1.3],
         margin=dict(l=10, r=10, t=25, b=10), paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)", showlegend=False,
     )

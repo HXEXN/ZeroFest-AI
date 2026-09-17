@@ -27,7 +27,7 @@ def test_closed_loop_discount_flow(tmp_path, monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     path = tmp_path / "demo.db"
     db.reset_demo(path)
-    db.advance_demo_time("19:00", path)
+    db.advance_demo_time("18:30", path)
 
     before = run_workflow("booth-chicken", db_path=path)
     stock_before_response = int(before["booth"]["current_stock"])
@@ -51,13 +51,16 @@ def test_closed_loop_discount_flow(tmp_path, monkeypatch):
     assert approved["predicted_sales_30m"] > before["prediction"]["predicted_sales_30m"]
     assert approved["expected_remaining"] < baseline_remaining
 
-    response = db.simulate_student_response(path)
+    response = db.simulate_student_response(path, until_time="20:00")
     assert response["sold"] > 0
     after = run_workflow("booth-chicken", db_path=path)
     # The re-prediction reads a changed world: stock fell and the clock advanced.
     assert after["booth"]["current_stock"] == stock_before_response - response["sold"]
     assert db.get_demo_time(path).isoformat() == response["to"] + ":00"
-    assert after["prediction"]["expected_remaining"] < baseline_remaining
+    assert (
+        after["prediction"]["expected_remaining"]
+        < response["counterfactual"]["expected_remaining"]
+    )
     assert db.get_intervention_baseline("booth-chicken", path)["expected_remaining"] == baseline_remaining
 
 
@@ -75,16 +78,16 @@ def test_demo_timeline_reveals_prepared_csv_snapshots(tmp_path):
     assert middle["total_sales"] == 100
     assert middle["current_stock"] == 300
 
-    db.advance_demo_time("19:00", path)
+    db.advance_demo_time("18:30", path)
     end = db.get_booth_state("booth-chicken", path)
-    assert end["total_sales"] == 168
-    assert end["current_stock"] == 232
+    assert end["total_sales"] == 138
+    assert end["current_stock"] == 262
 
 
 def test_live_order_is_not_double_counted_in_student_response(tmp_path):
     path = tmp_path / "response-window.db"
     db.reset_demo(path)
-    db.advance_demo_time("19:00", path)
+    db.advance_demo_time("18:30", path)
     before = run_workflow("booth-chicken", db_path=path)
     discount = next(
         item for item in db.get_actions("booth-chicken", "PENDING", path)
@@ -104,6 +107,37 @@ def test_live_order_is_not_double_counted_in_student_response(tmp_path):
     assert after["current_stock"] == (
         before["booth"]["current_stock"] - response["window_sales"]
     )
+
+
+def test_closed_loop_repredicts_every_30_minutes_until_20(tmp_path):
+    path = tmp_path / "three-windows.db"
+    db.reset_demo(path)
+    db.advance_demo_time("18:30", path)
+    before = run_workflow("booth-chicken", db_path=path)
+    discount = next(
+        item for item in db.get_actions("booth-chicken", "PENDING", path)
+        if item["action_type"] == "DISCOUNT"
+    )
+    run_workflow("booth-chicken", [discount["action_id"]], path)
+    db.record_sale("booth-chicken", 5, db_path=path)
+
+    response = db.simulate_student_response(path, until_time="20:00")
+
+    assert db.get_demo_time(path).strftime("%H:%M") == "20:00"
+    assert len(response["windows"]) == 3
+    assert response["pre_recorded_sales"] == 5
+    assert all(window["actual_sales"] == window["predicted_sales"] for window in response["windows"])
+    for previous, current in zip(response["windows"], response["windows"][1:]):
+        assert current["opening_stock"] == previous["closing_stock"]
+    assert db.get_booth_state("booth-chicken", path)["current_stock"] == (
+        before["booth"]["current_stock"] - response["window_sales"]
+    )
+    after = run_workflow("booth-chicken", db_path=path)
+    assert (
+        after["prediction"]["expected_remaining"]
+        < response["counterfactual"]["expected_remaining"]
+    )
+    assert db.get_student_response_trace(path) == response
 
 
 def test_predictions_have_no_hardcoded_demo_path(tmp_path):

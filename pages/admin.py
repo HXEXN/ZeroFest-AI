@@ -12,8 +12,6 @@ from components.ui import configure_page, flow_strip, page_header, sidebar
 from config import ACTION_LABELS
 from services.chat import ask_admin
 from services.database import (
-    DEMO_TIMELINE,
-    advance_demo_time,
     dashboard_rows,
     get_actions,
     get_active_promotions,
@@ -34,24 +32,6 @@ page_header(
     "개별 부스를 넘어 축제 전체의 공급과 수요를 관리합니다. 예측은 ML이, 위험판정은 규칙이, 실행 결정은 사람이 맡습니다.",
 )
 flow_strip()
-st.markdown("#### 시간대별 판매 데이터 재생")
-st.caption("축제는 16:00에 시작했습니다. 준비된 CSV 스냅샷을 30분 단위로 반영해 판매·재고·AI 판단 변화를 보여줍니다.")
-timeline_now = get_demo_time()
-timeline_columns = st.columns(len(DEMO_TIMELINE))
-for column, target_time in zip(timeline_columns, DEMO_TIMELINE):
-    target_hour, target_minute = map(int, target_time.split(":"))
-    target = timeline_now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
-    reached = target <= timeline_now
-    label = f"✓ {target_time}" if reached else f"▶ {target_time}"
-    if column.button(label, key=f"timeline-{target_time}", disabled=reached, width="stretch"):
-        advance_demo_time(target_time)
-        with st.spinner(f"{target_time} 판매·재고 반영 및 AI 재예측 중..."):
-            analyze_all()
-        st.session_state["timeline_notice"] = target_time
-        st.rerun()
-if "timeline_notice" in st.session_state:
-    st.success(f"{st.session_state.pop('timeline_notice')} 스냅샷 반영 완료 · 모든 부스를 재예측했습니다.")
-
 st.markdown(
     '<div class="zf-copilot"><div class="zf-kicker">AI OPERATIONS COPILOT</div>'
     '<strong>현재 위험·재고·품절 시각·추천 근거를 바로 질문할 수 있습니다.</strong></div>',

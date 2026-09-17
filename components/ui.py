@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.graph import analyze_all
-from services.database import get_demo_time, reset_demo
+from services.database import DEMO_TIMELINE, advance_demo_time, get_demo_time, reset_demo
 
 
 CSS = """
@@ -122,6 +122,25 @@ def sidebar(role: str) -> None:
                 analyze_all()
             st.session_state.clear()
             st.rerun()
+        st.markdown("##### 시나리오 시점 이동")
+        st.caption("각 버튼은 시연 상태를 다시 불러오므로 앞뒤 시각을 자유롭게 확인할 수 있습니다.")
+        timeline_now = get_demo_time().strftime("%H:%M")
+        timeline_columns = st.columns(len(DEMO_TIMELINE))
+        for column, target_time in zip(timeline_columns, DEMO_TIMELINE):
+            label = f"● {target_time}" if timeline_now == target_time else target_time
+            if column.button(label, key=f"sidebar-timeline-{target_time}", width="stretch"):
+                with st.spinner(f"{target_time} 판매·재고와 AI 판단을 불러오는 중..."):
+                    # A timeline jump is a deterministic replay, not a mutation of
+                    # whatever approval or sale happened in the previous scene.
+                    reset_demo()
+                    advance_demo_time(target_time)
+                    analyze_all()
+                st.session_state.clear()
+                st.session_state["timeline_notice"] = target_time
+                st.rerun()
+        timeline_notice = st.session_state.pop("timeline_notice", None)
+        if timeline_notice:
+            st.success(f"{timeline_notice} 시점으로 이동했습니다.")
         st.caption(f"{get_demo_time():%H:%M} · 행사 종료 22:00 · 30분 단위 Demo")
 
 

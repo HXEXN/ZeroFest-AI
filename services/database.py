@@ -14,7 +14,7 @@ from typing import Any, Iterator
 from config import DATA_DIR, DB_PATH, DEMO_TIME
 
 
-DEMO_DATA_VERSION = "2026-09-timeline-v2"
+DEMO_DATA_VERSION = "2026-09-closed-loop-v3"
 
 
 SCHEMA = """
@@ -322,18 +322,18 @@ def get_demo_time(db_path: Path | str = DB_PATH) -> datetime:
     return datetime.fromisoformat(get_setting("demo_time", DEMO_TIME, db_path))
 
 
-DEMO_TIMELINE = ("17:30", "18:00", "18:30", "19:00")
+DEMO_TIMELINE = ("17:30", "18:00", "18:30")
 
 
 def advance_demo_time(target_time: str, db_path: Path | str = DB_PATH) -> datetime:
-    """Move the demo forward to a prepared CSV snapshot without time travel."""
+    """Move the demo to one of the prepared pre-intervention CSV snapshots."""
     if target_time not in DEMO_TIMELINE:
         raise ValueError(f"지원하지 않는 시연 시각입니다: {target_time}")
     current = get_demo_time(db_path)
     hour, minute = map(int, target_time.split(":"))
     target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if target < current:
-        raise ValueError("시연 시각은 이전으로 되돌릴 수 없습니다. 전체 초기화를 사용해 주세요.")
+        raise ValueError("이전 시각 이동은 상태 초기화 후 다시 시도해 주세요.")
     set_setting("demo_time", target.isoformat(), db_path)
     return target
 
@@ -447,15 +447,21 @@ def get_booth_state(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, A
     return row
 
 
-def get_weather_context(db_path: Path | str = DB_PATH) -> dict[str, Any]:
-    now = get_demo_time(db_path).isoformat()
+def get_weather_context(
+    db_path: Path | str = DB_PATH,
+    at_time: datetime | None = None,
+) -> dict[str, Any]:
+    now = (at_time or get_demo_time(db_path)).isoformat()
     current = query_one("SELECT * FROM weather WHERE timestamp<=? ORDER BY timestamp DESC LIMIT 1", (now,), db_path)
     future = query_one("SELECT * FROM weather WHERE timestamp>? ORDER BY timestamp ASC LIMIT 1", (now,), db_path)
     return {"current": current or {}, "forecast_1h": future or current or {}}
 
 
-def get_event_context(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:
-    now = get_demo_time(db_path).isoformat()
+def get_event_context(
+    db_path: Path | str = DB_PATH,
+    at_time: datetime | None = None,
+) -> list[dict[str, Any]]:
+    now = (at_time or get_demo_time(db_path)).isoformat()
     return query_all(
         "SELECT * FROM festival_events WHERE end_time>=? ORDER BY start_time", (now,), db_path
     )
@@ -538,7 +544,7 @@ def activate_promotion(booth_id: str, discount_rate: int = 20, db_path: Path | s
             (
                 str(uuid.uuid4()), booth_id, discount_rate,
                 f"🔥 {booth['menu_name']} 마감 할인",
-                now.isoformat(), (now + timedelta(hours=1)).isoformat(),
+                now.isoformat(), (now + timedelta(hours=2)).isoformat(),
             ),
         )
 
@@ -675,6 +681,7 @@ def record_intervention_baseline(booth_id: str, db_path: Path | str = DB_PATH) -
         return
     prediction = get_latest_prediction(booth_id, db_path)
     if prediction:
+        booth = get_booth_state(booth_id, db_path)
         latest_sale = query_one(
             "SELECT COALESCE(MAX(snapshot_id), 0) AS snapshot_id FROM sales_snapshots "
             "WHERE booth_id=? AND timestamp<=?",
@@ -685,9 +692,11 @@ def record_intervention_baseline(booth_id: str, db_path: Path | str = DB_PATH) -
             "expected_remaining": int(prediction["expected_remaining"]),
             "predicted_sales_30m": int(prediction["predicted_sales_30m"]),
             "risk_level": str(prediction["risk_level"]),
-            "current_stock": int(get_booth_state(booth_id, db_path)["current_stock"]),
-            "recent_sales_30m": int(get_booth_state(booth_id, db_path)["recent_sales_30m"]),
-            "total_sales": int(get_booth_state(booth_id, db_path)["total_sales"]),
+            "current_stock": int(booth["current_stock"]),
+            "recent_sales_30m": int(booth["recent_sales_30m"]),
+            "previous_sales_30m": int(booth["previous_sales_30m"]),
+            "recent_tickets_30m": int(booth["recent_tickets_30m"]),
+            "total_sales": int(booth["total_sales"]),
             "last_sales_snapshot_id": int(latest_sale.get("snapshot_id") or 0),
             "timestamp": get_demo_time(db_path).isoformat(timespec="minutes"),
         }, ensure_ascii=False), db_path)
@@ -698,79 +707,198 @@ def get_intervention_baseline(booth_id: str, db_path: Path | str = DB_PATH) -> d
     return json.loads(raw) if raw else None
 
 
-def simulate_student_response(db_path: Path | str = DB_PATH) -> dict[str, Any]:
-    """Let one 30-minute window elapse with the approved discount running.
+def simulate_student_response(
+    db_path: Path | str = DB_PATH,
+    until_time: str | None = None,
+) -> dict[str, Any]:
+    """Replay discounted demand in 30-minute closed-loop windows.
 
-    The realized quantity is the demand the model itself forecast under the
-    discount, so the loop closes on the model's own prediction instead of on a
-    hand-picked number. Sales and stock are written as ordinary snapshots, which
-    is why the re-prediction afterwards is a genuine re-prediction: it reads a
-    changed world, not a flag.
+    Each window predicts from the latest state, writes the resulting sales and
+    stock snapshots, advances the clock, and feeds that changed state into the
+    next window. ``until_time`` lets the live demo run from the 18:30 approval to
+    20:00 while the default remains one window for API and unit-test callers.
     """
     from models.demand_model import predict_demand
-    from services.weather import get_weather
+    from models.waste_risk import classify_waste_risk
 
     booth_id = get_setting("student_response_booth", "booth-chicken", db_path)
-    state = get_booth_state(booth_id, db_path)
-    if not int(state.get("active_discount_rate", 0)):
+    initial_state = get_booth_state(booth_id, db_path)
+    if not int(initial_state.get("active_discount_rate", 0)):
         raise ValueError("학생 반응 시뮬레이션은 승인된 할인이 있어야 실행할 수 있습니다.")
 
-    now = get_demo_time(db_path)
-    prediction = predict_demand(
-        state,
-        {"now": now, "weather": get_weather(db_path), "events": get_event_context(db_path)},
-    )
-    target_sales = max(0, int(prediction["predicted_sales_30m"]))
+    started_at = get_demo_time(db_path)
+    if until_time:
+        hour, minute = map(int, until_time.split(":"))
+        finish_at = started_at.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    else:
+        finish_at = started_at + timedelta(minutes=STUDENT_RESPONSE_WINDOW_MINUTES)
+    duration_minutes = int((finish_at - started_at).total_seconds() // 60)
+    if duration_minutes <= 0 or duration_minutes % STUDENT_RESPONSE_WINDOW_MINUTES:
+        raise ValueError("학생 반응 종료 시각은 현재보다 뒤인 30분 단위여야 합니다.")
+
     baseline = get_intervention_baseline(booth_id, db_path) or {}
-    baseline_snapshot_id = int(baseline.get("last_sales_snapshot_id", 0))
-    manual_sales = query_one(
-        """SELECT COALESCE(SUM(sales_quantity), 0) AS quantity
-           FROM sales_snapshots
-           WHERE booth_id=? AND snapshot_id>? AND timestamp<=?""",
-        (booth_id, baseline_snapshot_id, now.isoformat()),
-        db_path,
-    ) or {}
-    already_recorded = int(manual_sales.get("quantity") or 0)
-    # One-click orders recorded after approval are part of this 30-minute
-    # response window. Only add the remainder so the live order is not counted
-    # twice when the clock advances.
-    realized = max(0, min(int(state["current_stock"]), target_sales - already_recorded))
-    advanced = now + timedelta(minutes=STUDENT_RESPONSE_WINDOW_MINUTES)
-    unit_price = int(round(int(state["price"]) * (100 - int(state["active_discount_rate"])) / 100))
-    with connection(db_path) as conn:
-        # Move live orders entered at the approval instant to the end of the
-        # observation window. They remain single DB rows, but now belong to the
-        # same (19:00, 19:30] window as the simulated remainder.
-        conn.execute(
-            """UPDATE sales_snapshots SET timestamp=?
-               WHERE booth_id=? AND snapshot_id>? AND timestamp<=?""",
-            (advanced.isoformat(), booth_id, baseline_snapshot_id, now.isoformat()),
-        )
-        conn.execute(
-            """INSERT INTO sales_snapshots(timestamp, booth_id, menu_id, sales_quantity, revenue, ticket_count)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                advanced.isoformat(), booth_id, state["menu_id"], realized, realized * unit_price,
-                max(1, round(realized / AVERAGE_PARTY_SIZE)),
-            ),
-        )
-        conn.execute(
-            """INSERT INTO inventory_snapshots(timestamp, booth_id, menu_id, current_stock, additional_stock)
-               VALUES (?, ?, ?, ?, 0)""",
-            (advanced.isoformat(), booth_id, state["menu_id"], max(0, int(state["current_stock"]) - realized)),
-        )
-    set_setting("demo_time", advanced.isoformat(), db_path)
-    set_setting("student_response_simulated", "1", db_path)
-    return {
-        "booth_id": booth_id,
-        "sold": realized,
-        "target_sales": target_sales,
-        "pre_recorded_sales": already_recorded,
-        "window_sales": already_recorded + realized,
-        "discount_rate": int(state["active_discount_rate"]),
-        "from": now.isoformat(timespec="minutes"),
-        "to": advanced.isoformat(timespec="minutes"),
+    sales_cursor = int(baseline.get("last_sales_snapshot_id", 0))
+    now = started_at
+    windows: list[dict[str, Any]] = []
+    counterfactual_windows: list[dict[str, Any]] = []
+    total_target = 0
+    total_manual = 0
+    total_simulated = 0
+    counterfactual_state = {
+        **initial_state,
+        "current_stock": int(baseline.get("current_stock", initial_state["current_stock"])),
+        "recent_sales_30m": int(
+            baseline.get("recent_sales_30m", initial_state["recent_sales_30m"])
+        ),
+        "previous_sales_30m": int(
+            baseline.get("previous_sales_30m", initial_state["previous_sales_30m"])
+        ),
+        "recent_tickets_30m": int(
+            baseline.get("recent_tickets_30m", initial_state["recent_tickets_30m"])
+        ),
+        "active_discount_rate": 0,
+        "discount_started_at": None,
+        "student_response_simulated": False,
     }
+
+    while now < finish_at:
+        context = {
+            "now": now,
+            "weather": get_weather_context(db_path, at_time=now),
+            "events": get_event_context(db_path, at_time=now),
+        }
+        no_action_prediction = predict_demand(counterfactual_state, context)
+        no_action_sales = min(
+            int(counterfactual_state["current_stock"]),
+            max(0, int(no_action_prediction["predicted_sales_30m"])),
+        )
+        no_action_closing_stock = max(
+            0, int(counterfactual_state["current_stock"]) - no_action_sales
+        )
+        advanced = now + timedelta(minutes=STUDENT_RESPONSE_WINDOW_MINUTES)
+        counterfactual_windows.append(
+            {
+                "from": now.isoformat(timespec="minutes"),
+                "to": advanced.isoformat(timespec="minutes"),
+                "predicted_sales": no_action_sales,
+                "opening_stock": int(counterfactual_state["current_stock"]),
+                "closing_stock": no_action_closing_stock,
+            }
+        )
+        counterfactual_state["previous_sales_30m"] = int(
+            counterfactual_state["recent_sales_30m"]
+        )
+        counterfactual_state["recent_sales_30m"] = no_action_sales
+        counterfactual_state["recent_tickets_30m"] = max(
+            1, round(no_action_sales / AVERAGE_PARTY_SIZE)
+        )
+        counterfactual_state["current_stock"] = no_action_closing_stock
+
+        state = get_booth_state(booth_id, db_path)
+        prediction = predict_demand(state, context)
+        target_sales = max(0, int(prediction["predicted_sales_30m"]))
+        manual_sales = query_one(
+            """SELECT COALESCE(SUM(sales_quantity), 0) AS quantity,
+                      COALESCE(MAX(snapshot_id), ?) AS max_snapshot_id
+               FROM sales_snapshots
+               WHERE booth_id=? AND snapshot_id>? AND timestamp<=?""",
+            (sales_cursor, booth_id, sales_cursor, now.isoformat()),
+            db_path,
+        ) or {}
+        already_recorded = int(manual_sales.get("quantity") or 0)
+        manual_max_id = int(manual_sales.get("max_snapshot_id") or sales_cursor)
+        realized = max(0, min(int(state["current_stock"]), target_sales - already_recorded))
+        unit_price = int(
+            round(int(state["price"]) * (100 - int(state["active_discount_rate"])) / 100)
+        )
+        closing_stock = max(0, int(state["current_stock"]) - realized)
+        with connection(db_path) as conn:
+            # Live one-click orders at the approval instant become observations
+            # in the first elapsed window instead of being counted a second time.
+            conn.execute(
+                """UPDATE sales_snapshots SET timestamp=?
+                   WHERE booth_id=? AND snapshot_id>? AND snapshot_id<=? AND timestamp<=?""",
+                (
+                    advanced.isoformat(), booth_id, sales_cursor, manual_max_id,
+                    now.isoformat(),
+                ),
+            )
+            if realized:
+                inserted = conn.execute(
+                    """INSERT INTO sales_snapshots
+                       (timestamp, booth_id, menu_id, sales_quantity, revenue, ticket_count)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        advanced.isoformat(), booth_id, state["menu_id"], realized,
+                        realized * unit_price, max(1, round(realized / AVERAGE_PARTY_SIZE)),
+                    ),
+                )
+                sales_cursor = int(inserted.lastrowid)
+            else:
+                sales_cursor = manual_max_id
+            conn.execute(
+                """INSERT INTO inventory_snapshots
+                   (timestamp, booth_id, menu_id, current_stock, additional_stock)
+                   VALUES (?, ?, ?, ?, 0)""",
+                (advanced.isoformat(), booth_id, state["menu_id"], closing_stock),
+            )
+        actual_sales = already_recorded + realized
+        windows.append(
+            {
+                "from": now.isoformat(timespec="minutes"),
+                "to": advanced.isoformat(timespec="minutes"),
+                "predicted_sales": target_sales,
+                "live_sales": already_recorded,
+                "simulated_sales": realized,
+                "actual_sales": actual_sales,
+                "opening_stock": int(state["current_stock"]) + already_recorded,
+                "closing_stock": closing_stock,
+                "predicted_remaining_before": int(prediction["expected_remaining"]),
+            }
+        )
+        total_target += target_sales
+        total_manual += already_recorded
+        total_simulated += realized
+        set_setting("demo_time", advanced.isoformat(), db_path)
+        now = advanced
+
+    set_setting("student_response_simulated", "1", db_path)
+    counterfactual_end_prediction = predict_demand(
+        counterfactual_state,
+        {
+            "now": finish_at,
+            "weather": get_weather_context(db_path, at_time=finish_at),
+            "events": get_event_context(db_path, at_time=finish_at),
+        },
+    )
+    counterfactual_risk = classify_waste_risk(
+        int(counterfactual_end_prediction["expected_remaining"]),
+        int(counterfactual_state["current_stock"]),
+    )
+    result = {
+        "booth_id": booth_id,
+        "sold": total_simulated,
+        "target_sales": total_target,
+        "pre_recorded_sales": total_manual,
+        "window_sales": total_manual + total_simulated,
+        "discount_rate": int(initial_state["active_discount_rate"]),
+        "from": started_at.isoformat(timespec="minutes"),
+        "to": finish_at.isoformat(timespec="minutes"),
+        "windows": windows,
+        "counterfactual": {
+            "current_stock": int(counterfactual_state["current_stock"]),
+            "expected_remaining": int(counterfactual_end_prediction["expected_remaining"]),
+            "risk_level": str(counterfactual_risk["risk_level"]),
+            "windows": counterfactual_windows,
+        },
+    }
+    set_setting("student_response_trace", json.dumps(result, ensure_ascii=False), db_path)
+    return result
+
+
+def get_student_response_trace(db_path: Path | str = DB_PATH) -> dict[str, Any] | None:
+    raw = get_setting("student_response_trace", "", db_path)
+    return json.loads(raw) if raw else None
 
 
 def dashboard_rows(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:

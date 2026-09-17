@@ -2,16 +2,12 @@ timestamp,booth_id,menu_id,sales_quantity,revenue,ticket_count
 2026-05-22T17:30:00,booth-chicken,menu-chicken,55,330000,23
 2026-05-22T18:00:00,booth-chicken,menu-chicken,45,270000,19
 2026-05-22T18:30:00,booth-chicken,menu-chicken,38,228000,16
-2026-05-22T19:00:00,booth-chicken,menu-chicken,30,180000,13
 2026-05-22T17:30:00,booth-drink,menu-drink,70,210000,29
 2026-05-22T18:00:00,booth-drink,menu-drink,80,240000,33
 2026-05-22T18:30:00,booth-drink,menu-drink,90,270000,38
-2026-05-22T19:00:00,booth-drink,menu-drink,95,285000,40
 2026-05-22T17:30:00,booth-tteok,menu-tteok,45,225000,19
 2026-05-22T18:00:00,booth-tteok,menu-tteok,42,210000,18
 2026-05-22T18:30:00,booth-tteok,menu-tteok,38,190000,16
-2026-05-22T19:00:00,booth-tteok,menu-tteok,34,170000,14
 2026-05-22T17:30:00,booth-waffle,menu-waffle,25,100000,10
 2026-05-22T18:00:00,booth-waffle,menu-waffle,30,120000,13
 2026-05-22T18:30:00,booth-waffle,menu-waffle,35,140000,15
-2026-05-22T19:00:00,booth-waffle,menu-waffle,40,160000,17
