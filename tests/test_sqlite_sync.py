@@ -41,3 +41,32 @@ def test_reset_is_transactional_and_keeps_db_file(tmp_path):
     assert db.get_setting("active_booth_id", "", path) == "booth-chicken"
     assert db.get_runtime_revision(path) >= 1
     assert state["current_stock"] >= 0
+
+
+def test_pos_sync_event_is_visible_from_fresh_connection(tmp_path):
+    path = tmp_path / "sync-event.db"
+    db.initialize_database(path)
+
+    before = db.get_booth_state("booth-chicken", path)
+    db.record_sale("booth-chicken", 10, db_path=path)
+
+    event = db.publish_pos_sync_event(
+        "sale",
+        "booth-chicken",
+        quantity=10,
+        db_path=path,
+    )
+
+    # verify_pos_sim_sync opens new connections internally,
+    # mirroring a separate Streamlit page/session.
+    check = db.verify_pos_sim_sync("booth-chicken", path)
+    after = db.get_booth_state("booth-chicken", path)
+
+    assert event["event_id"]
+    assert check["wal_ok"] is True
+    assert check["event_seen"] is True
+    assert check["same_booth"] is True
+    assert check["revision_ok"] is True
+    assert check["state_ok"] is True
+    assert after["total_sales"] == before["total_sales"] + 10
+    assert after["current_stock"] == before["current_stock"] - 10
