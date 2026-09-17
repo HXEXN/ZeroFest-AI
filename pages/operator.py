@@ -211,7 +211,7 @@ with st.container(border=True):
             db.set_setting("active_booth_id", booth_id)
 
             st.session_state["operator_notice"] = (
-                f"{quantity}개 판매를 반영했습니다. Simulation에서도 {labels[booth_id]} 기준으로 확인할 수 있습니다."
+                f"{quantity}개 판매를 반영했습니다. Simulation에도 자동 반영됩니다."
             )
             st.rerun()
 
@@ -266,7 +266,7 @@ with st.container(border=True):
             )
             st.rerun()
 
-    st.caption("입력값은 Demo SQLite 상태에 저장되며 Simulation이 같은 상태를 읽습니다.")
+    st.caption("입력 즉시 DB와 AI 예측에 반영되며 Simulation이 자동으로 최신 상태를 읽습니다.")
 
 if "operator_notice" in st.session_state:
     st.success(st.session_state.pop("operator_notice"))
