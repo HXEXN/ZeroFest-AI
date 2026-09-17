@@ -79,13 +79,17 @@ CSS = """
 MOBILE_CSS = """
 <style>
     [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] { display:none !important; }
-    [data-testid="stMainBlockContainer"] {
-        max-width:430px !important; padding:0 15px 92px !important;
+    [data-testid="stMainBlockContainer"], .block-container {
+        max-width:440px !important; margin:0 auto !important;
+        padding:0 14px 120px !important;
         border-left:1px solid #e2e8f0; border-right:1px solid #e2e8f0;
         min-height:100vh; background:#faf8ff;
+        overflow-x:hidden !important;
+        box-sizing:border-box !important;
+        -webkit-overflow-scrolling:touch;
     }
-    .stApp { background:#eef1f8 !important; }
-    .zf-mobile-top { margin:0 -15px 14px; padding:12px 15px; background:rgba(250,248,255,.96);
+    .stApp { background:#eef1f8 !important; overflow-x:hidden !important; }
+    .zf-mobile-top { margin:0 -14px 14px; padding:12px 14px; background:rgba(250,248,255,.96);
         border-bottom:1px solid #dfe4f2; position:sticky; top:0; z-index:30; backdrop-filter:blur(14px); }
     .zf-mobile-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
     .zf-brand { display:flex; align-items:center; gap:9px; min-width:0; }
@@ -100,6 +104,7 @@ MOBILE_CSS = """
         box-shadow:0 2px 7px rgba(15,23,42,.05); margin:10px 0; }
     .zf-mobile-card.danger { background:#fff5f5; border-color:#fecaca; }
     .zf-mobile-card.mint { background:linear-gradient(135deg,#ecfdf5,#fff); border-color:#bbf7d0; }
+    .zf-mobile-card.orange { background:linear-gradient(135deg,#fff7ed,#fff); border-color:#fed7aa; }
     .zf-eyebrow { font-size:10px; font-weight:850; letter-spacing:.05em; color:#166534; text-transform:uppercase; }
     .zf-mobile-h1 { font-size:25px; line-height:1.24; font-weight:900; letter-spacing:-.045em; margin:8px 0; color:#131b2e; }
     .zf-mobile-h2 { font-size:18px; font-weight:850; letter-spacing:-.03em; margin:0; color:#131b2e; }
@@ -124,8 +129,8 @@ MOBILE_CSS = """
     .zf-progress > i { display:block; height:100%; border-radius:999px; }
     .zf-booth-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     .zf-bottom-nav { position:fixed; bottom:0; left:50%; transform:translateX(-50%); z-index:100;
-        width:min(430px,100vw); display:grid; grid-template-columns:repeat(4,1fr); padding:7px 8px max(8px,env(safe-area-inset-bottom));
-        background:rgba(255,255,255,.96); border-top:1px solid #dfe4f2; box-shadow:0 -5px 18px rgba(15,23,42,.07);
+        width:min(440px,100vw); display:grid; grid-template-columns:repeat(4,1fr); padding:7px 8px max(8px,env(safe-area-inset-bottom));
+        background:rgba(255,255,255,.98); border-top:1px solid #dfe4f2; box-shadow:0 -5px 18px rgba(15,23,42,.07);
         backdrop-filter:blur(15px); }
     .zf-bottom-nav a { color:#64748b; text-decoration:none; text-align:center; font-size:9px; font-weight:750;
         min-height:46px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; border-radius:10px; }
@@ -137,14 +142,88 @@ MOBILE_CSS = """
     .zf-pill { display:inline-flex; align-items:center; padding:3px 7px; border-radius:999px; font-size:9px; font-weight:850; }
     .zf-pill.high { background:#ef4444; color:white; } .zf-pill.medium { background:#ffedd5; color:#9a3412; }
     .zf-pill.low { background:#d1fae5; color:#047857; }
-    div.stButton > button, div[data-testid="stFormSubmitButton"] > button { min-height:52px !important; font-size:14px !important; }
+    div.stButton > button, div[data-testid="stFormSubmitButton"] > button { min-height:50px !important; font-size:14px !important; border-radius:12px !important; }
     div[data-testid="stVerticalBlockBorderWrapper"] { border-radius:16px !important; border-color:#dfe4f2 !important; background:#fff; }
     [data-testid="stMetric"] { padding:11px !important; min-height:96px; }
     [data-testid="stMetricLabel"] { font-size:11px !important; }
     [data-testid="stMetricValue"] { font-size:23px !important; }
     .stTabs [data-baseweb="tab-list"] { gap:4px; background:#eef2ff; border-radius:12px; padding:4px; }
     .stTabs [data-baseweb="tab"] { border-radius:9px; font-size:11px; min-height:40px; }
-    @media (max-width:480px) { [data-testid="stMainBlockContainer"] { border:0; } }
+
+    /* Segmented pill styling for horizontal radios */
+    div[data-testid="stRadio"] > div[role="radiogroup"] {
+        display:flex; flex-direction:row; gap:4px; flex-wrap:wrap;
+        background:#f1f5f9; padding:4px; border-radius:12px;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label {
+        background:transparent; border-radius:9px; padding:6px 12px; margin:0 !important;
+        font-size:12px; font-weight:750; color:#475569; transition:all .15s ease;
+        border:none !important; cursor:pointer;
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label:has(input:checked) {
+        background:#ffffff; color:#0f172a; font-weight:850;
+        box-shadow:0 1px 4px rgba(15,23,42,.1);
+    }
+    div[data-testid="stRadio"] > div[role="radiogroup"] > label > div:first-child {
+        display:none !important;
+    }
+
+    /* Student-specific rich components */
+    .zf-sale-card {
+        border:2px solid #f97316; background:linear-gradient(145deg, #ffffff 0%, #fffbf5 100%);
+        border-radius:16px; padding:15px; margin:10px 0;
+        box-shadow:0 8px 20px -4px rgba(249,115,22,.18); box-sizing:border-box; width:100%;
+    }
+    .zf-sale-badge {
+        display:inline-flex; align-items:center; gap:4px; padding:3px 8px;
+        background:#ea580c; color:#ffffff; border-radius:6px; font-size:11px; font-weight:900;
+    }
+    .zf-sale-timer {
+        display:inline-flex; align-items:center; gap:4px; padding:3px 8px;
+        background:#ffedd5; color:#c2410c; border-radius:999px; font-size:10px; font-weight:800;
+    }
+    .zf-coupon-ticket {
+        background:linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%);
+        border:2px dashed #10b981; border-radius:16px; padding:16px 20px; margin:12px 0;
+        box-shadow:0 6px 18px rgba(16,185,129,.12); position:relative; box-sizing:border-box;
+        overflow:hidden;
+    }
+    .zf-coupon-ticket::before, .zf-coupon-ticket::after {
+        content:""; position:absolute; top:50%; width:16px; height:16px;
+        background:#faf8ff; border:2px solid #10b981; border-radius:50%;
+        transform:translateY(-50%); z-index:2;
+    }
+    .zf-coupon-ticket::before { left:-9px; }
+    .zf-coupon-ticket::after { right:-9px; }
+    .zf-coupon-barcode {
+        height:32px; margin:10px 0 6px; border-radius:3px;
+        background:repeating-linear-gradient(90deg, #0f172a, #0f172a 2px, transparent 2px, transparent 5px, #0f172a 5px, #0f172a 9px, transparent 9px, transparent 11px);
+        opacity:0.8;
+    }
+    .zf-stamp-grid {
+        display:grid; grid-template-columns:repeat(5, 1fr); gap:6px; margin:12px 0; box-sizing:border-box;
+    }
+    .zf-stamp-item {
+        aspect-ratio:1/1; border-radius:50%; border:2px dashed #cbd5e1;
+        background:#ffffff; display:flex; flex-direction:column; align-items:center;
+        justify-content:center; font-size:16px; color:#94a3b8; box-sizing:border-box;
+    }
+    .zf-stamp-item.active {
+        border:2px solid #166534; background:linear-gradient(135deg, #ecfdf5, #d1fae5);
+        color:#166534; box-shadow:0 3px 10px rgba(22,101,52,.2);
+    }
+    .zf-stamp-num { font-size:9px; font-weight:850; margin-top:2px; font-family:"JetBrains Mono",monospace; }
+    .zf-booth-row {
+        background:#ffffff; border:1px solid #e2e8f0; border-radius:14px;
+        padding:12px 14px; margin:8px 0; display:flex; justify-content:space-between;
+        align-items:center; box-shadow:0 1px 3px rgba(15,23,42,.03); box-sizing:border-box;
+    }
+    .zf-time-bar {
+        display:flex; align-items:center; justify-content:space-between; gap:6px;
+        padding:8px 12px; background:#f8fafc; border:1px solid #e2e8f0;
+        border-radius:12px; font-size:11px; margin:8px 0 12px; box-sizing:border-box;
+    }
+    @media (max-width:480px) { [data-testid="stMainBlockContainer"], .block-container { border:0; padding:0 12px 120px !important; } }
 </style>
 """
 

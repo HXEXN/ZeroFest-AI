@@ -623,7 +623,7 @@ def add_stamp(
 ) -> dict[str, Any]:
     progress = get_reward_progress(participant_id, db_path)
     stamps = min(5, int(progress.get("stamps") or 0) + 1)
-    coupon = progress.get("coupon_code") or ("ZERO-STAMP-FREE" if stamps >= 5 else None)
+    coupon = "ZERO-STAMP-FREE" if stamps >= 5 else progress.get("coupon_code")
     with connection(db_path) as conn:
         conn.execute(
             """UPDATE reward_progress

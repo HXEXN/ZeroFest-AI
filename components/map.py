@@ -38,10 +38,18 @@ def _zone_summary(rows: list[dict[str, Any]], promotions: list[dict[str, Any]]) 
     return sorted(zones.values(), key=lambda item: item["zone"])
 
 
+STUDENT_STYLE = {
+    "HIGH": ("#f97316", "#fff7ed", "🔥 마감 특가"),
+    "MEDIUM": ("#f59e0b", "#fffbeb", "⚡ 혜택 임박"),
+    "LOW": ("#10b981", "#ecfdf5", "✨ 부스 운영"),
+}
+
+
 def festival_map(
     rows: list[dict[str, Any]],
     promotions: list[dict[str, Any]] | None = None,
     stage_name: str | None = None,
+    stage_schedule: str | None = None,
     admin: bool = False,
 ) -> None:
     summary = _zone_summary(rows, promotions or [])
@@ -49,39 +57,43 @@ def festival_map(
         st.info("표시할 부스가 없습니다.")
         return
 
+    style_map = RISK_STYLE if admin else STUDENT_STYLE
     cards = []
     for entry in summary:
-        border, background, label = RISK_STYLE.get(entry["risk"], RISK_STYLE["LOW"])
+        border, background, label = style_map.get(entry["risk"], style_map["LOW"])
         if entry["discounted"]:
-            badge = '<div style="margin-top:.35rem;font-weight:800;color:#c2410c">🔥 마감 할인 진행 중</div>'
+            badge = '<div style="margin-top:.35rem;font-weight:850;font-size:.76rem;color:#ea580c">🔥 타임세일 중!</div>'
         elif admin:
-            badge = f'<div style="margin-top:.35rem;color:#475569">예상 잔여 {entry["remaining"]}개</div>'
+            badge = f'<div style="margin-top:.35rem;color:#475569;font-size:.76rem">예상 잔여 {entry["remaining"]}개</div>'
         else:
-            badge = f'<div style="margin-top:.35rem;color:#475569">부스 {entry["booths"]}곳</div>'
-        menus = " · ".join(dict.fromkeys(m for m in entry["menus"] if m))[:34]
+            badge = f'<div style="margin-top:.35rem;color:#64748b;font-size:.74rem">부스 {entry["booths"]}곳 · 주문가능</div>'
+        menus = " · ".join(dict.fromkeys(m for m in entry["menus"] if m))[:24]
         cards.append(
-            f"""<div style="flex:1;min-width:150px;background:{background};border:2px solid {border};
-                        border-radius:16px;padding:14px;box-shadow:0 8px 18px #0001">
+            f"""<div style="background:{background};border:1.5px solid {border};
+                        border-radius:14px;padding:10px 11px;box-shadow:0 2px 6px rgba(0,0,0,.04);box-sizing:border-box">
               <div style="display:flex;justify-content:space-between;align-items:center">
-                <b style="font-size:1.05rem">{entry['zone']} ZONE</b>
-                <span style="font-size:.7rem;font-weight:800;color:{border}">{label}</span>
+                <b style="font-size:.95rem;color:#1e293b">{entry['zone']} ZONE</b>
+                <span style="font-size:.68rem;font-weight:850;color:{border}">{label}</span>
               </div>
-              <div style="font-size:.82rem;color:#334155;margin-top:.3rem">{menus}</div>
+              <div style="font-size:.75rem;color:#475569;margin-top:.25rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="{menus}">{menus}</div>
               {badge}
             </div>"""
         )
 
     stage = stage_name or "Main Stage"
+    schedule_sub = stage_schedule or "공연 구역 · 3,000명 밀집"
     st.markdown(
         f"""
         <div style="border-radius:18px;background:linear-gradient(145deg,#eaedff,#f2f3ff);
-                    border:1px solid #d8def8;padding:20px">
-          <div style="background:#102a22;color:white;border-radius:16px;padding:14px;text-align:center;
-                      font-weight:800;margin-bottom:16px">🎤 {stage}
-            <br><small style="color:#a7f3d0">공연 구역 · 혼잡</small></div>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">{''.join(cards)}</div>
-          <div style="margin-top:14px;color:#547268;font-size:.78rem">
-            구역 단위 표시 · 정밀 위치 추적 없음</div>
+                    border:1px solid #d8def8;padding:14px;box-sizing:border-box">
+          <div style="background:#102a22;color:white;border-radius:14px;padding:11px 14px;text-align:center;
+                      font-weight:800;margin-bottom:12px">🎤 {stage}
+            <br><small style="color:#a7f3d0;font-size:.75rem">{schedule_sub}</small></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;box-sizing:border-box">{''.join(cards)}</div>
+          <div style="margin-top:10px;color:#547268;font-size:.73rem;display:flex;justify-content:space-between;align-items:center">
+            <span>구역 단위 표시 · 위치 추적 없음</span>
+            <span>{"관리자 모드" if admin else "학생 혜택 연동"}</span>
+          </div>
         </div>
         """,
         unsafe_allow_html=True,
