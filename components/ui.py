@@ -5,7 +5,7 @@ from __future__ import annotations
 import streamlit as st
 
 from agents.graph import analyze_all
-from services.database import reset_demo
+from services.database import get_demo_time, reset_demo
 
 
 CSS = """
@@ -81,10 +81,11 @@ def configure_page(title: str, icon: str = "🌿") -> None:
 
 
 def page_header(kicker: str, title: str, subtitle: str) -> None:
+    now_label = get_demo_time().strftime("%H:%M")
     st.markdown(
         f'<div class="zf-header-shell"><div><div class="zf-kicker">{kicker}</div>'
         f'<div class="zf-title">{title}</div><div class="zf-subtitle">{subtitle}</div></div>'
-        '<div class="zf-live"><span class="zf-live-dot"></span> REALTIME · 19:00</div></div>',
+        f'<div class="zf-live"><span class="zf-live-dot"></span> REALTIME · {now_label}</div></div>',
         unsafe_allow_html=True,
     )
     demo_banner()
@@ -121,7 +122,7 @@ def sidebar(role: str) -> None:
                 analyze_all()
             st.session_state.clear()
             st.rerun()
-        st.caption("19:00 · 1시간 뒤 비 예보 · 메인 공연 종료 예정")
+        st.caption(f"{get_demo_time():%H:%M} · 행사 종료 22:00 · 30분 단위 Demo")
 
 
 def flow_strip() -> None:

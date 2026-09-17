@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 ROOT_DIR = Path(__file__).resolve().parent
 DATA_DIR = ROOT_DIR / "data"
 DB_PATH = DATA_DIR / "zerofest.db"
-DEMO_TIME = "2026-05-22T19:00:00"
+DEMO_TIME = "2026-05-22T17:30:00"
 
 load_dotenv(ROOT_DIR / ".env")
 

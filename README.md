@@ -65,6 +65,17 @@ streamlit run app.py
 
 브라우저에서 표시되는 로컬 주소(기본 `http://localhost:8501`)로 접속한다. API 키 없이 기본 Demo가 완전히 작동한다.
 
+### 브랜치 변경사항 확인
+
+Streamlit Community Cloud의 기존 URL은 배포 설정에 연결된 브랜치만 보여준다. `kjs` 작업 중에는 로컬에서 해당 브랜치를 실행해 확인한다.
+
+```bash
+git switch kjs
+streamlit run app.py
+```
+
+운영자 화면은 `http://localhost:8501/operator`에서 확인한다. 원격 미리보기가 필요하면 `kjs`를 push한 뒤 Streamlit Community Cloud에서 같은 저장소·`kjs` 브랜치·`app.py`를 가리키는 별도 앱을 만든다. 기존 운영 앱의 브랜치를 바꾸지 않는다.
+
 ## 문제의 보편성
 
 이 문제가 특정 축제 한두 건의 일이 아니라는 근거는 [docs/problem_evidence.md](docs/problem_evidence.md)에 출처와 함께 정리했다.
@@ -112,15 +123,16 @@ python scripts/build_data_requirement_report.py
 ./scripts/publish_github.sh https://github.com/HXEXN/ZeroFest-AI.git
 ```
 
-## 3분 Demo
+## 2분 Demo
 
-1. Admin: 19:00 기준 닭꼬치 재고 180, 최근 30분 20개·8팀, 예상 잔여 **62개 · HIGH** 확인
-2. Operator: `20% 마감 할인` 승인 → 다음 30분 예측이 24 → 27개(**+12%**)로 오르고 예상 잔여가 **47개 · MEDIUM**으로 내려감
-3. Student: `6,000원 → 4,800원` 즉시 노출 확인
-4. Simulation: `학생 반응 발생 → 재예측` → 27개 판매·재고 153개가 실제로 기록되고 19:30 상태로 재예측(**예상 잔여 42개**)
+1. Admin: `17:30 → 18:00 → 18:30 → 19:00` 버튼으로 준비된 판매·재고 CSV를 재생한다.
+2. Admin: 닭꼬치 판매가 `55 → 45 → 38 → 30개`로 감소하는 동안 종료 예상 잔여와 위험도가 어떻게 변하는지 확인한다.
+3. Operator: `20% 마감 할인`을 승인하고 Student에서 `6,000원 → 4,800원` 노출을 확인한다.
+4. Operator: 학생 주문을 원클릭으로 입력한다. 판매량·재고·주문 건수가 한 번에 기록된다.
+5. Simulation: `30분 경과 · 학생 반응 반영 → 재예측`을 누른다. 이미 원클릭으로 입력한 주문은 30분 판매 목표에서 제외해 중복 집계하지 않는다.
+6. Before / After: 승인 전과 30분 후의 실제 판매, 현재 재고, 종료 예상 잔여, 위험도를 비교한다.
 
-화면의 모든 숫자는 모델이 계산한 값이다. 고정된 시연용 수치는 없으며, 모델이나 데이터를 바꾸면 화면도 함께 바뀐다.
-한 번의 할인으로 위험이 사라지지는 않는다. 예상 잔여는 62 → 42개로 **32% 줄어들고**, 루프는 새 상태에서 다시 반복된다.
+초기 재고는 닭꼬치 400, 레몬에이드 450, 떡볶이 350, 와플 250개다. 화면의 예측값은 모델이 계산하므로 문서에 고정하지 않는다. 데이터나 모델이 바뀌면 Before / After도 함께 바뀐다.
 
 상세 발표 멘트는 [docs/demo_scenario.md](docs/demo_scenario.md)에 있다. 상태가 바뀌었으면 사이드바의 `Demo 전체 초기화`를 누른다.
 

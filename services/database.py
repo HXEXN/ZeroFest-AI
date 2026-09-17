@@ -14,6 +14,9 @@ from typing import Any, Iterator
 from config import DATA_DIR, DB_PATH, DEMO_TIME
 
 
+DEMO_DATA_VERSION = "2026-09-timeline-v2"
+
+
 SCHEMA = """
 PRAGMA foreign_keys = ON;
 
@@ -201,8 +204,15 @@ def initialize_database(db_path: Path | str = DB_PATH) -> None:
             (historical_rows, DEMO_TIME),
         )
         exists = conn.execute("SELECT 1 FROM universities LIMIT 1").fetchone()
+        version_row = conn.execute(
+            "SELECT value FROM settings WHERE key='demo_data_version'"
+        ).fetchone() if exists else None
     if not exists:
         seed_demo_data(path)
+    elif not version_row or version_row[0] != DEMO_DATA_VERSION:
+        # Demo CSV snapshots are versioned together. Reset once on deployment so
+        # an old persisted SQLite file cannot mix previous stock with new sales.
+        reset_demo(path)
 
 
 def reset_demo(db_path: Path | str = DB_PATH) -> None:
@@ -230,10 +240,10 @@ def seed_demo_data(db_path: Path | str = DB_PATH) -> None:
         ]
         conn.executemany("INSERT INTO booths VALUES (?, ?, ?, ?, ?, ?)", booths)
         menus = [
-            ("menu-chicken", "booth-chicken", "닭꼬치", "food", 6000, 300),
-            ("menu-drink", "booth-drink", "레몬 에이드", "drink", 3000, 157),
-            ("menu-tteok", "booth-tteok", "떡볶이", "food", 5000, 161),
-            ("menu-waffle", "booth-waffle", "초코 와플", "dessert", 4000, 108),
+            ("menu-chicken", "booth-chicken", "닭꼬치", "food", 6000, 400),
+            ("menu-drink", "booth-drink", "레몬 에이드", "drink", 3000, 450),
+            ("menu-tteok", "booth-tteok", "떡볶이", "food", 5000, 350),
+            ("menu-waffle", "booth-waffle", "초코 와플", "dessert", 4000, 250),
         ]
         conn.executemany("INSERT INTO menus VALUES (?, ?, ?, ?, ?, ?)", menus)
 
@@ -277,6 +287,7 @@ def seed_demo_data(db_path: Path | str = DB_PATH) -> None:
         settings = {
             "demo_time": DEMO_TIME,
             "demo_mode": "1",
+            "demo_data_version": DEMO_DATA_VERSION,
             "student_response_simulated": "0",
             "festival_total_days": "3",
             "data_disclaimer": "Sample / Synthetic Festival Dataset",
@@ -309,6 +320,22 @@ def set_setting(key: str, value: str, db_path: Path | str = DB_PATH) -> None:
 
 def get_demo_time(db_path: Path | str = DB_PATH) -> datetime:
     return datetime.fromisoformat(get_setting("demo_time", DEMO_TIME, db_path))
+
+
+DEMO_TIMELINE = ("17:30", "18:00", "18:30", "19:00")
+
+
+def advance_demo_time(target_time: str, db_path: Path | str = DB_PATH) -> datetime:
+    """Move the demo forward to a prepared CSV snapshot without time travel."""
+    if target_time not in DEMO_TIMELINE:
+        raise ValueError(f"지원하지 않는 시연 시각입니다: {target_time}")
+    current = get_demo_time(db_path)
+    hour, minute = map(int, target_time.split(":"))
+    target = current.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target < current:
+        raise ValueError("시연 시각은 이전으로 되돌릴 수 없습니다. 전체 초기화를 사용해 주세요.")
+    set_setting("demo_time", target.isoformat(), db_path)
+    return target
 
 
 def get_booths(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:
@@ -358,6 +385,8 @@ def register_booth(
 
 
 def get_booth_state(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, Any]:
+    now = get_demo_time(db_path)
+    now_iso = now.isoformat()
     row = query_one(
         """SELECT b.booth_id, b.booth_name, b.zone, m.menu_id, m.menu_name,
                   m.category, m.price, m.initial_stock,
@@ -365,19 +394,20 @@ def get_booth_state(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, A
                   u.student_count,
                   i.current_stock, i.additional_stock,
                   COALESCE((SELECT SUM(s.sales_quantity) FROM sales_snapshots s
-                            WHERE s.booth_id=b.booth_id), 0) AS total_sales,
+                            WHERE s.booth_id=b.booth_id AND s.timestamp<=?), 0) AS total_sales,
                   COALESCE((SELECT SUM(s.revenue) FROM sales_snapshots s
-                            WHERE s.booth_id=b.booth_id), 0) AS total_revenue
+                            WHERE s.booth_id=b.booth_id AND s.timestamp<=?), 0) AS total_revenue
            FROM booths b
            JOIN festivals f ON f.festival_id=b.festival_id
            JOIN universities u ON u.university_id=f.university_id
            JOIN menus m ON m.booth_id=b.booth_id
            JOIN inventory_snapshots i ON i.snapshot_id=(
                SELECT snapshot_id FROM inventory_snapshots
-               WHERE booth_id=b.booth_id ORDER BY timestamp DESC, snapshot_id DESC LIMIT 1
+               WHERE booth_id=b.booth_id AND timestamp<=?
+               ORDER BY timestamp DESC, snapshot_id DESC LIMIT 1
            )
            WHERE b.booth_id=?""",
-        (booth_id,),
+        (now_iso, now_iso, now_iso, booth_id),
         db_path,
     )
     if not row:
@@ -385,7 +415,6 @@ def get_booth_state(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, A
     # Sum over real 30-minute windows rather than reading the last row. Operator
     # input arrives one order at a time, so "the latest row" is one party, not
     # half an hour of trade.
-    now = get_demo_time(db_path)
     def _window(start_offset: int, end_offset: int) -> dict[str, int]:
         totals = query_one(
             """SELECT COALESCE(SUM(sales_quantity), 0) AS quantity,
@@ -646,11 +675,20 @@ def record_intervention_baseline(booth_id: str, db_path: Path | str = DB_PATH) -
         return
     prediction = get_latest_prediction(booth_id, db_path)
     if prediction:
+        latest_sale = query_one(
+            "SELECT COALESCE(MAX(snapshot_id), 0) AS snapshot_id FROM sales_snapshots "
+            "WHERE booth_id=? AND timestamp<=?",
+            (booth_id, get_demo_time(db_path).isoformat()),
+            db_path,
+        ) or {}
         set_setting(key, json.dumps({
             "expected_remaining": int(prediction["expected_remaining"]),
             "predicted_sales_30m": int(prediction["predicted_sales_30m"]),
             "risk_level": str(prediction["risk_level"]),
             "current_stock": int(get_booth_state(booth_id, db_path)["current_stock"]),
+            "recent_sales_30m": int(get_booth_state(booth_id, db_path)["recent_sales_30m"]),
+            "total_sales": int(get_booth_state(booth_id, db_path)["total_sales"]),
+            "last_sales_snapshot_id": int(latest_sale.get("snapshot_id") or 0),
             "timestamp": get_demo_time(db_path).isoformat(timespec="minutes"),
         }, ensure_ascii=False), db_path)
 
@@ -682,10 +720,32 @@ def simulate_student_response(db_path: Path | str = DB_PATH) -> dict[str, Any]:
         state,
         {"now": now, "weather": get_weather(db_path), "events": get_event_context(db_path)},
     )
-    realized = max(0, min(int(state["current_stock"]), int(prediction["predicted_sales_30m"])))
+    target_sales = max(0, int(prediction["predicted_sales_30m"]))
+    baseline = get_intervention_baseline(booth_id, db_path) or {}
+    baseline_snapshot_id = int(baseline.get("last_sales_snapshot_id", 0))
+    manual_sales = query_one(
+        """SELECT COALESCE(SUM(sales_quantity), 0) AS quantity
+           FROM sales_snapshots
+           WHERE booth_id=? AND snapshot_id>? AND timestamp<=?""",
+        (booth_id, baseline_snapshot_id, now.isoformat()),
+        db_path,
+    ) or {}
+    already_recorded = int(manual_sales.get("quantity") or 0)
+    # One-click orders recorded after approval are part of this 30-minute
+    # response window. Only add the remainder so the live order is not counted
+    # twice when the clock advances.
+    realized = max(0, min(int(state["current_stock"]), target_sales - already_recorded))
     advanced = now + timedelta(minutes=STUDENT_RESPONSE_WINDOW_MINUTES)
     unit_price = int(round(int(state["price"]) * (100 - int(state["active_discount_rate"])) / 100))
     with connection(db_path) as conn:
+        # Move live orders entered at the approval instant to the end of the
+        # observation window. They remain single DB rows, but now belong to the
+        # same (19:00, 19:30] window as the simulated remainder.
+        conn.execute(
+            """UPDATE sales_snapshots SET timestamp=?
+               WHERE booth_id=? AND snapshot_id>? AND timestamp<=?""",
+            (advanced.isoformat(), booth_id, baseline_snapshot_id, now.isoformat()),
+        )
         conn.execute(
             """INSERT INTO sales_snapshots(timestamp, booth_id, menu_id, sales_quantity, revenue, ticket_count)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -704,6 +764,9 @@ def simulate_student_response(db_path: Path | str = DB_PATH) -> dict[str, Any]:
     return {
         "booth_id": booth_id,
         "sold": realized,
+        "target_sales": target_sales,
+        "pre_recorded_sales": already_recorded,
+        "window_sales": already_recorded + realized,
         "discount_rate": int(state["active_discount_rate"]),
         "from": now.isoformat(timespec="minutes"),
         "to": advanced.isoformat(timespec="minutes"),

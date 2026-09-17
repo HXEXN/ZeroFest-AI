@@ -37,6 +37,8 @@ current_remaining = int(prediction.get("expected_remaining", 0))
 current_risk = str(prediction.get("risk_level", "-"))
 before_remaining = int(baseline["expected_remaining"]) if baseline else current_remaining
 before_risk = str(baseline["risk_level"]) if baseline else current_risk
+before_stock = int(baseline["current_stock"]) if baseline else int(state["current_stock"])
+before_sales = int(baseline.get("recent_sales_30m", state["recent_sales_30m"])) if baseline else int(state["recent_sales_30m"])
 
 status_cols = st.columns(5)
 steps = [
@@ -51,6 +53,37 @@ for column, (number, label, done) in zip(status_cols, steps):
         f'<div class="zf-card" style="text-align:center;border-color:{"#10b981" if done else "#dce9e3"}">'
         f'<div style="font-size:1.4rem">{"✓" if done else number}</div><b>{label}</b></div>',
         unsafe_allow_html=True,
+    )
+
+metric_sales, metric_stock, metric_remaining = st.columns(3)
+after_sales = (
+    max(0, int(state["total_sales"]) - int(baseline.get("total_sales", state["total_sales"])))
+    if baseline else int(state["recent_sales_30m"])
+)
+sales_delta = after_sales - before_sales if baseline and simulated else None
+stock_delta = int(state["current_stock"]) - before_stock if baseline else None
+remaining_delta = current_remaining - before_remaining if baseline else None
+metric_sales.metric(
+    "할인 승인 후 실제 판매",
+    f"{after_sales}개",
+    f"{sales_delta:+d}개 vs 승인 전" if sales_delta is not None else None,
+)
+metric_stock.metric(
+    "현재 재고",
+    f"{state['current_stock']}개",
+    f"{stock_delta:+d}개 vs 승인 전" if stock_delta is not None else None,
+    delta_color="inverse",
+)
+metric_remaining.metric(
+    "종료 예상 잔여",
+    f"{current_remaining}개",
+    f"{remaining_delta:+d}개 vs 승인 전" if remaining_delta is not None else None,
+    delta_color="inverse",
+)
+if baseline:
+    st.caption(
+        f"승인 전 기준 · 실제 판매 {before_sales}개 / 재고 {before_stock}개 / "
+        f"예상 잔여 {before_remaining}개 ({before_risk})"
     )
 
 left, right = st.columns([1.2, 0.8], gap="large")
@@ -88,7 +121,7 @@ with right:
     if promotions and not simulated:
         promo = promotions[0]
         st.success(f"{promo['discount_rate']}% 할인이 학생 화면에 노출되었습니다. ({promo['price']:,}원 → {promo['sale_price']:,}원)")
-        if st.button("학생 반응 발생 → 재예측", type="primary", width="stretch"):
+        if st.button("30분 경과 · 학생 반응 반영 → 재예측", type="primary", width="stretch"):
             result = db.simulate_student_response()
             run_workflow(BOOTH_ID)
             st.session_state["last_response"] = result
@@ -98,7 +131,9 @@ with right:
         if result:
             st.caption(
                 f"{result['from'][-5:]} → {result['to'][-5:]} 사이 할인 적용 상태로 "
-                f"{result['sold']}개가 판매된 것으로 시뮬레이션했습니다."
+                f"목표 {result.get('target_sales', result['sold'])}개 중 원클릭 입력 "
+                f"{result.get('pre_recorded_sales', 0)}개를 제외한 {result['sold']}개를 추가 반영했습니다. "
+                f"30분 실제 판매는 총 {result.get('window_sales', result['sold'])}개입니다."
             )
         st.caption("판매·재고 스냅샷이 실제로 기록된 뒤 같은 파이프라인이 다시 예측했습니다.")
     else:
@@ -106,7 +141,7 @@ with right:
         st.page_link("pages/operator.py", label="할인 승인하러 가기", icon="🧑‍🍳")
 
 st.divider()
-st.markdown("### 발표용 3분 시나리오")
+st.markdown("### 발표용 2분 시나리오")
 st.markdown(
     f"1. **Admin**에서 {state['menu_name']} 예상 잔여와 {before_risk} 위험도, 판단 근거를 확인합니다.\n"
     "2. **Operator**에서 `20% 마감 할인`을 승인합니다. 모델이 할인을 새 개입으로 인식해 다음 30분 수요 예측을 올립니다.\n"
