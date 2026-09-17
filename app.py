@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from agents.graph import analyze_all, ensure_predictions, run_workflow
+from agents.graph import ensure_predictions, run_workflow
 from components.ui import MOBILE_NAV, configure_page, mobile_bottom_nav, mobile_header
 from services import database as db
 
@@ -75,8 +75,8 @@ with st.container(border=True):
         """,
         unsafe_allow_html=True,
     )
-        if st.button("▶ 시뮬레이터 시작", type="primary", width="stretch"):
-        result = run_workflow("booth-chicken")
+    if st.button("▶ 시뮬레이터 시작", type="primary", width="stretch"):
+        run_workflow("booth-chicken")
         discount = next(
             (
                 item
@@ -95,12 +95,10 @@ with st.container(border=True):
             st.session_state["gateway_loop_result"] = response
             st.rerun()
 
-    # 시연용 초기화 버튼
+    # 시연용 초기화: DB를 19:00 초기 상태로 복원하고 세션 결과도 제거
     if st.button("↻ 시뮬레이터 초기화", width="stretch"):
         with st.spinner("19:00 초기 상태로 복원하는 중..."):
             db.reset_demo()
-            analyze_all()
-
         st.session_state.clear()
         st.rerun()
 
