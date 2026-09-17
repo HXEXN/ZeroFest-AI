@@ -23,9 +23,6 @@ from services import database as db
 configure_page("부스 운영자", "🧑‍🍳", mobile=True)
 
 # Operator page-specific responsive fixes.
-# The mobile shell is only 440px wide, so 5-column metrics and a 2-column
-# input/recommendation split become unreadable. Keep the page single-column
-# and use a 2-column KPI grid instead.
 st.markdown(
     """
     <style>
@@ -71,7 +68,6 @@ st.markdown(
         word-break: keep-all;
     }
 
-    /* Streamlit buttons should wrap instead of clipping/ellipsis on mobile. */
     div.stButton > button,
     div[data-testid="stFormSubmitButton"] > button {
         min-height: 50px !important;
@@ -90,7 +86,6 @@ st.markdown(
         margin: 0 !important;
     }
 
-    /* Keep form labels readable inside narrow mobile columns. */
     [data-testid="stWidgetLabel"] p,
     [data-testid="stSelectbox"] p,
     [data-testid="stNumberInput"] p {
@@ -98,7 +93,6 @@ st.markdown(
         word-break: keep-all !important;
     }
 
-    /* Slightly reduce horizontal gaps on the 440px mobile shell. */
     [data-testid="stHorizontalBlock"] {
         gap: 8px !important;
     }
@@ -125,12 +119,39 @@ page_header(
 )
 
 booths = db.get_booths()
+booth_ids = [item["booth_id"] for item in booths]
 labels = {
     item["booth_id"]: f"{item['zone']}구역 · {item['booth_name']} ({item['menu_name']})"
     for item in booths
 }
-default_index = [item["booth_id"] for item in booths].index("booth-chicken")
-booth_id = st.selectbox("내 부스", list(labels), format_func=labels.get, index=default_index)
+
+# ---------------------------------------------------------
+# POS ↔ Simulation 공통 선택 부스
+# session_state + SQLite settings에 모두 저장한다.
+# 다른 페이지/탭에서도 Simulation이 같은 부스를 읽을 수 있다.
+# ---------------------------------------------------------
+
+saved_booth_id = st.session_state.get(
+    "active_booth_id",
+    db.get_setting("active_booth_id", "booth-chicken"),
+)
+
+if saved_booth_id not in booth_ids:
+    saved_booth_id = "booth-chicken" if "booth-chicken" in booth_ids else booth_ids[0]
+
+default_index = booth_ids.index(saved_booth_id)
+
+booth_id = st.selectbox(
+    "내 부스",
+    booth_ids,
+    format_func=labels.get,
+    index=default_index,
+)
+
+# 현재 선택값을 항상 공유 상태로 동기화
+st.session_state["active_booth_id"] = booth_id
+if db.get_setting("active_booth_id", "") != booth_id:
+    db.set_setting("active_booth_id", booth_id)
 
 state = db.get_booth_state(booth_id)
 prediction = db.get_latest_prediction(booth_id) or {}
@@ -138,7 +159,6 @@ prediction = db.get_latest_prediction(booth_id) or {}
 stockout_at = prediction.get("estimated_stockout_at")
 stockout_label = datetime.fromisoformat(stockout_at).strftime("%H:%M") if stockout_at else "없음"
 
-# Mobile-safe KPI cards: 2 columns + final full-width card.
 st.markdown(
     f"""
     <div class="op-kpi-grid">
@@ -172,7 +192,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Do not split this section into left/right columns on a 440px-wide app.
 with st.container(border=True):
     st.markdown("#### 원클릭 운영 입력")
     st.caption("한 번 누르면 한 팀의 주문입니다. 판매량과 재고, 주문 건수가 함께 기록됩니다.")
@@ -186,17 +205,38 @@ with st.container(border=True):
         ):
             db.record_sale(booth_id, quantity)
             run_workflow(booth_id)
+
+            # Simulation이 이 부스를 계속 바라보게 유지
+            st.session_state["active_booth_id"] = booth_id
+            db.set_setting("active_booth_id", booth_id)
+
+            st.session_state["operator_notice"] = (
+                f"{quantity}개 판매를 반영했습니다. Simulation에서도 {labels[booth_id]} 기준으로 확인할 수 있습니다."
+            )
             st.rerun()
 
     stock_cols = st.columns(2, gap="small")
-    if stock_cols[0].button("재고 -10", width="stretch", key=f"minus-{booth_id}"):
+
+    if stock_cols[0].button(
+        "재고 -10",
+        width="stretch",
+        key=f"minus-{booth_id}",
+    ):
         db.adjust_stock(booth_id, -10)
         run_workflow(booth_id)
+        st.session_state["active_booth_id"] = booth_id
+        db.set_setting("active_booth_id", booth_id)
         st.rerun()
 
-    if stock_cols[1].button("추가 +10", width="stretch", key=f"plus-{booth_id}"):
+    if stock_cols[1].button(
+        "추가 +10",
+        width="stretch",
+        key=f"plus-{booth_id}",
+    ):
         db.adjust_stock(booth_id, 10)
         run_workflow(booth_id)
+        st.session_state["active_booth_id"] = booth_id
+        db.set_setting("active_booth_id", booth_id)
         st.rerun()
 
     with st.form(f"exact-stock-{booth_id}"):
@@ -207,19 +247,39 @@ with st.container(border=True):
             step=1,
             help="실사한 수량으로 재고 스냅샷을 교정합니다.",
         )
-        if st.form_submit_button("실재고 적용", width="stretch"):
-            db.set_stock(booth_id, int(exact_stock))
+
+        if st.form_submit_button(
+            "실재고 적용",
+            width="stretch",
+        ):
+            db.set_stock(
+                booth_id,
+                int(exact_stock),
+            )
             run_workflow(booth_id)
+
+            st.session_state["active_booth_id"] = booth_id
+            db.set_setting("active_booth_id", booth_id)
+
             st.session_state["operator_notice"] = (
                 f"실재고를 {int(exact_stock)}개로 교정했습니다."
             )
             st.rerun()
 
-    st.caption("입력값은 Demo SQLite 상태에만 저장됩니다.")
+    st.caption("입력값은 Demo SQLite 상태에 저장되며 Simulation이 같은 상태를 읽습니다.")
+
+if "operator_notice" in st.session_state:
+    st.success(st.session_state.pop("operator_notice"))
 
 with st.container(border=True):
     st.markdown("#### AI Recommendation")
-    st.markdown(risk_badge(prediction.get("risk_level", "LOW")), unsafe_allow_html=True)
+    st.markdown(
+        risk_badge(
+            prediction.get("risk_level", "LOW")
+        ),
+        unsafe_allow_html=True,
+    )
+
     st.markdown(
         f"**종료 시 {prediction.get('expected_remaining', 0)}개 잔여 예상**  \n"
         f"30분 {prediction.get('predicted_sales_30m', 0)}개 · "
@@ -234,10 +294,18 @@ with st.container(border=True):
     else:
         st.info("현재 판매속도 기준, 당일 행사 종료 전 품절 예상은 없습니다.")
 
-    with st.expander("예측 근거 보기", expanded=False):
+    with st.expander(
+        "예측 근거 보기",
+        expanded=False,
+    ):
         for driver in prediction.get("drivers", []):
-            st.markdown(f"- {driver}")
-        st.caption(f"Model · {prediction.get('model_source', 'prediction unavailable')}")
+            st.markdown(
+                f"- {driver}"
+            )
+
+        st.caption(
+            f"Model · {prediction.get('model_source', 'prediction unavailable')}"
+        )
 
     st.page_link(
         "pages/chat.py",
@@ -246,20 +314,43 @@ with st.container(border=True):
         width="stretch",
     )
 
+    st.page_link(
+        "pages/simulation.py",
+        label="🧪 현재 POS 부스로 Simulation 보기",
+        icon="🧪",
+        width="stretch",
+    )
+
 st.divider()
 st.markdown("#### 승인 대기 Action")
-pending = db.get_actions(booth_id, "PENDING")
+
+pending = db.get_actions(
+    booth_id,
+    "PENDING",
+)
 
 if not pending:
-    st.success("현재 승인 대기 Action이 없습니다.")
+    st.success(
+        "현재 승인 대기 Action이 없습니다."
+    )
 
 for action in pending:
-    with st.container(border=True):
+    with st.container(
+        border=True
+    ):
         st.markdown(
             f"**{ACTION_LABELS.get(action['action_type'], action['action_type'])}**"
         )
-        st.caption(action["reason"])
-        button_type = "primary" if action["action_type"] == "DISCOUNT" else "secondary"
+        st.caption(
+            action["reason"]
+        )
+
+        button_type = (
+            "primary"
+            if action["action_type"] == "DISCOUNT"
+            else "secondary"
+        )
+
         if st.button(
             "승인",
             key=action["action_id"],
@@ -268,35 +359,70 @@ for action in pending:
         ):
             run_workflow(
                 booth_id,
-                approved_action_ids=[action["action_id"]],
+                approved_action_ids=[
+                    action["action_id"]
+                ],
             )
+
+            st.session_state["active_booth_id"] = booth_id
+            db.set_setting("active_booth_id", booth_id)
+
             st.session_state["operator_notice"] = (
                 f"{ACTION_LABELS.get(action['action_type'], action['action_type'])}을 승인·반영했습니다."
             )
             st.rerun()
 
-if "operator_notice" in st.session_state:
-    st.success(st.session_state.pop("operator_notice"))
+active = [
+    item
+    for item in db.get_active_promotions()
+    if item["booth_id"] == booth_id
+]
 
-active = [item for item in db.get_active_promotions() if item["booth_id"] == booth_id]
 if active:
     promo = active[0]
+
     st.success(
         f"🔥 학생 화면 노출 중 · {promo['menu_name']} "
         f"{promo['price']:,}원 → {promo['sale_price']:,}원 "
         f"({promo['discount_rate']}% 할인)"
     )
-    st.page_link("pages/student.py", label="학생 화면에서 확인 →", icon="🎓")
-    if st.button("타임세일 종료", width="stretch"):
-        db.end_promotion(booth_id)
-        run_workflow(booth_id)
+
+    st.page_link(
+        "pages/student.py",
+        label="학생 화면에서 확인 →",
+        icon="🎓",
+    )
+
+    if st.button(
+        "타임세일 종료",
+        width="stretch",
+    ):
+        db.end_promotion(
+            booth_id
+        )
+        run_workflow(
+            booth_id
+        )
+
+        st.session_state["active_booth_id"] = booth_id
+        db.set_setting("active_booth_id", booth_id)
+
         st.session_state["operator_notice"] = (
             "타임세일을 종료하고 정가 운영으로 전환했습니다."
         )
         st.rerun()
 
-history = [item for item in db.get_actions(booth_id) if item["status"] == "EXECUTED"]
-with st.expander("승인 이력"):
+history = [
+    item
+    for item in db.get_actions(
+        booth_id
+    )
+    if item["status"] == "EXECUTED"
+]
+
+with st.expander(
+    "승인 이력"
+):
     if history:
         for item in history[:6]:
             st.write(
@@ -304,22 +430,46 @@ with st.expander("승인 이력"):
                 f"{item['executed_at']}"
             )
     else:
-        st.caption("아직 승인된 Action이 없습니다.")
+        st.caption(
+            "아직 승인된 Action이 없습니다."
+        )
 
 st.divider()
-with st.expander("＋ 새 부스 등록 (P0)"):
-    with st.form("register-booth", clear_on_submit=True):
-        booth_name = st.text_input("부스명", placeholder="예: 별빛 핫도그")
-        zone = st.selectbox("구역", ["A", "B", "C"])
-        menu_name = st.text_input("대표 메뉴", placeholder="예: 수제 핫도그")
 
-        price_col, stock_col = st.columns(2, gap="small")
+with st.expander(
+    "＋ 새 부스 등록 (P0)"
+):
+    with st.form(
+        "register-booth",
+        clear_on_submit=True,
+    ):
+        booth_name = st.text_input(
+            "부스명",
+            placeholder="예: 별빛 핫도그",
+        )
+
+        zone = st.selectbox(
+            "구역",
+            ["A", "B", "C"],
+        )
+
+        menu_name = st.text_input(
+            "대표 메뉴",
+            placeholder="예: 수제 핫도그",
+        )
+
+        price_col, stock_col = st.columns(
+            2,
+            gap="small",
+        )
+
         price = price_col.number_input(
             "판매가격",
             min_value=100,
             value=5000,
             step=100,
         )
+
         initial_stock = stock_col.number_input(
             "초기재고",
             min_value=0,
@@ -332,6 +482,7 @@ with st.expander("＋ 새 부스 등록 (P0)"):
             type="primary",
             width="stretch",
         )
+
         if submitted:
             try:
                 new_id = db.register_booth(
@@ -341,10 +492,25 @@ with st.expander("＋ 새 부스 등록 (P0)"):
                     int(price),
                     int(initial_stock),
                 )
-                run_workflow(new_id)
-                st.success("부스를 등록했습니다.")
-                st.rerun()
-            except ValueError as exc:
-                st.error(str(exc))
 
-mobile_bottom_nav(MOBILE_NAV, "")
+                run_workflow(
+                    new_id
+                )
+
+                st.session_state["active_booth_id"] = new_id
+                db.set_setting("active_booth_id", new_id)
+
+                st.success(
+                    "부스를 등록했습니다. Simulation 대상도 새 부스로 변경됩니다."
+                )
+                st.rerun()
+
+            except ValueError as exc:
+                st.error(
+                    str(exc)
+                )
+
+mobile_bottom_nav(
+    MOBILE_NAV,
+    "",
+)
