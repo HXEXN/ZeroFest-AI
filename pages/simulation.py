@@ -154,6 +154,9 @@ def live_simulation() -> None:
         and db.get_setting("student_response_booth", "") == booth_id
     )
 
+    sync_check = db.verify_pos_sim_sync(booth_id)
+    sync_event = sync_check.get("event") or {}
+
     current_remaining = int(prediction.get("expected_remaining", 0))
     current_risk = str(prediction.get("risk_level", "-"))
 
@@ -187,6 +190,86 @@ def live_simulation() -> None:
     st.caption(
         "POS에서 부스를 바꾸거나 판매·재고를 입력하면 별도 버튼 없이 이 화면에 자동 반영됩니다."
     )
+
+    if sync_check["sync_ok"]:
+        st.success(
+            f"✅ SYNC OK · POS 이벤트 {sync_event.get('event_id')} · "
+            f"DB rev {sync_check['runtime_revision']}"
+        )
+    elif not sync_check["event_seen"]:
+        st.info(
+            "동기화 대기 · POS에서 판매 또는 재고 변경을 한 번 실행하면 자동 검증이 시작됩니다."
+        )
+    elif not sync_check["same_booth"]:
+        st.warning(
+            f"POS 마지막 이벤트는 {sync_event.get('booth_id')} 부스입니다. "
+            f"현재 Simulation은 {booth_id} 부스를 보고 있습니다."
+        )
+    else:
+        failed = []
+        if not sync_check["wal_ok"]:
+            failed.append("WAL")
+        if not sync_check["revision_ok"]:
+            failed.append("revision")
+        if not sync_check["state_ok"]:
+            failed.append("판매/재고")
+        if not sync_check["prediction_ok"]:
+            failed.append("예측")
+        st.error(
+            "❌ SYNC CHECK · " + ", ".join(failed or ["상태 불일치"])
+        )
+
+    with st.expander("SQLite 동기화 상세 진단", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        c1.metric(
+            "Journal",
+            str(sync_check.get("journal_mode", "-")).upper(),
+        )
+        c2.metric(
+            "Revision",
+            str(sync_check.get("runtime_revision", "-")),
+        )
+        c3.metric(
+            "Server",
+            str(sync_check.get("server_instance_id", "-")),
+        )
+
+        st.markdown(
+            f"- WAL: **{'PASS' if sync_check['wal_ok'] else 'FAIL'}**  \n"
+            f"- POS 이벤트 조회: **{'PASS' if sync_check['event_seen'] else 'WAIT'}**  \n"
+            f"- 동일 부스: **{'PASS' if sync_check['same_booth'] else 'FAIL'}**  \n"
+            f"- Revision 반영: **{'PASS' if sync_check['revision_ok'] else 'FAIL'}**  \n"
+            f"- 판매·재고 반영: **{'PASS' if sync_check['state_ok'] else 'FAIL'}**  \n"
+            f"- 최신 예측 조회: **{'PASS' if sync_check['prediction_ok'] else 'FAIL'}**"
+        )
+
+        if sync_event:
+            st.caption(
+                f"POS event={sync_event.get('event_id')} · "
+                f"POS server={sync_event.get('server_instance_id')} · "
+                f"Simulation server={sync_check.get('server_instance_id')}"
+            )
+            st.write(
+                {
+                    "POS event booth": sync_event.get("booth_id"),
+                    "POS event total_sales": sync_event.get("total_sales"),
+                    "POS event current_stock": sync_event.get("current_stock"),
+                    "Simulation total_sales": state.get("total_sales"),
+                    "Simulation current_stock": state.get("current_stock"),
+                    "POS revision before marker": sync_event.get("revision_before_event"),
+                    "Simulation revision": sync_check.get("runtime_revision"),
+                }
+            )
+
+            if (
+                sync_event.get("server_instance_id")
+                and sync_event.get("server_instance_id")
+                != sync_check.get("server_instance_id")
+            ):
+                st.warning(
+                    "POS와 Simulation 요청이 서로 다른 Streamlit 서버 인스턴스에서 처리되고 있습니다. "
+                    "이 경우 로컬 SQLite 파일은 인스턴스 간 공유되지 않을 수 있습니다."
+                )
 
     # -------------------------------------------------------------
     # Closed-loop stages
@@ -314,15 +397,6 @@ def live_simulation() -> None:
             width="stretch",
         )
 
-    with st.expander("LIVE 연동 확인"):
-        st.write(f"선택 부스 ID: `{booth_id}`")
-        st.write(f"누적 판매: **{state['total_sales']}개**")
-        st.write(f"현재 재고: **{state['current_stock']}개**")
-        st.write(f"최근 30분 판매: **{state['recent_sales_30m']}개**")
-        st.write(
-            f"최신 ML 예측: 다음 30분 **{prediction.get('predicted_sales_30m', 0)}개**, "
-            f"종료 잔여 **{current_remaining}개**"
-        )
 
 
 live_simulation()
