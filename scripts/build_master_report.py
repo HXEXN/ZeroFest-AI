@@ -69,6 +69,59 @@ DEFECTS = [
      "품목 인덱스를 분리해 9종 전부 생성"),
 ]
 
+# The generation formula, the training procedure and the inference chain, each
+# written to match the code they describe. Pulled out as data so the report can
+# lay them out as tables rather than prose.
+DEMAND_TERMS = [
+    ("기준 수요", "BASE_MINUTE_DEMAND = 0.55", "메뉴 하나가 6시간에 150~250개 팔리는 규모"),
+    ("캠퍼스·연도", "demand_scale = 학생수/15,000 × (1 + 연차×0.035)", "규모가 크면 준비 재고도 함께 증가"),
+    ("부스·메뉴 인기", "booth_factor × menu_factor", "부스 U(0.72,1.28) · 메뉴 0.64~1.10 고정"),
+    ("공연 단계", "peak × performance", "pre 1.18×1.10 / main 1.42×1.22 / after 1.18×0.95"),
+    ("시간대", "0.72 + 0.28 × bakery_hour_factor", "베이커리 실데이터 시간대 분포"),
+    ("강수", "1 − min(rain_mm,4) × (음료 0.035 / 그 외 0.065)", "메뉴 유형별 민감도 차이"),
+    ("기온", "1 + max(기온−23,0) × (음료 +0.028 / 그 외 −0.012)", "더우면 음료는 늘고 음식은 준다"),
+    ("할인", "1 + 할인율 / 95", "20%면 +21.1%"),
+    ("축제 일차", "1일 0.92 / 2일 1.13 / 3일 0.86", "중간날이 가장 붐빈다"),
+]
+
+GENERATION_STEPS = [
+    ("1", "분당 기대수요 λ 계산", "위 아홉 항의 곱"),
+    ("2", "방문 팀 수 추출", "N ~ Poisson(λ / 평균팀규모)"),
+    ("3", "팀당 구매 수량 추출", "Xi = 1 + Poisson(평균팀규모 − 1) · 평균팀규모는 공연 단계별 2.0~2.5"),
+    ("4", "잠재 수요", "D = ΣXi  (재고 제약 이전, next_30m_latent_qty로 보존)"),
+    ("5", "실제 판매", "S = min(D, 현재 재고)  ← 여기서 검열이 발생한다"),
+    ("6", "재고 차감", "재고 ← 재고 − S. 0이 되면 stockout_flag"),
+    ("7", "타깃 집계", "스냅샷 시각 +1분부터 +30분까지 S의 합"),
+]
+
+TRAINING_STEPS = [
+    ("1", "코퍼스 생성", "연도 3 × 캠퍼스 3 = 9칸을 각각 다른 시드로 독립 시뮬레이션"),
+    ("2", "피처 파생", "category_code ← menu_category, new_discount_rate ← discount_elapsed < 30분"),
+    ("3", "검열 제외", "censored_window_flag == 0 행만 사용"),
+    ("4", "시간 분할", "2023–2024 학습 · 2025 전체를 홀드아웃 (칸 단위로 분리)"),
+    ("5", "학습", "GradientBoostingRegressor(huber, 120 trees, depth 4, lr 0.045, seed 42)"),
+    ("6", "평가", "홀드아웃에서 MAE·R², 운영 기준선(직전 30분 유지)과 함께 보고"),
+    ("7", "등록", "ml_runs에 run_id·지표·단계 기록, 이전 run은 is_active=0"),
+]
+
+INFERENCE_STEPS = [
+    ("1", "load_current_state", "SQLite 부스 상태 + 날씨 어댑터 + 공연 일정"),
+    ("2", "_feature_row", "15개 피처 1행. 판매·티켓은 demo_time 기준 30분 윈도우 합계"),
+    ("3", "predict_demand", "모델 예측 → next_30 (sklearn 실패 시 투명 휴리스틱 폴백)"),
+    ("4", "후처리", "next_60 = next_30 × 1.86 · until_close = next_30 × (남은분/30) × 0.82, 재고로 상한"),
+    ("5", "calculate_waste_risk", "ratio = 예상잔여 / 현재재고 → <0.10 LOW · <0.30 MEDIUM · 그 외 HIGH"),
+    ("6", "generate_action_candidates", "위험도별 규칙으로 후보 생성"),
+    ("7", "operator_approval", "승인 ID가 없으면 END. AI는 여기서 멈춘다"),
+    ("8", "execute → monitor → re_predict", "승인 시에만 실행하고 바뀐 상태로 다시 예측"),
+]
+
+ACTION_RULES = [
+    ("LOW", "MAINTAIN", "예상 잔여비율 10% 미만"),
+    ("MEDIUM", "STOP_COOKING · DISCOUNT · MONITOR", "선제적 할인 검토와 15분 후 재확인"),
+    ("HIGH", "STOP_COOKING · DISCOUNT · (TRANSFER) · PROMOTION",
+     "TRANSFER는 B구역 최근 수요가 이 부스보다 높을 때만 추가"),
+]
+
 LAYERS = [
     ("ML 예측", "30분·1시간·종료 시점 판매량", "LLM이 수치를 만들지 않음"),
     ("규칙 엔진", "잔여비율로 LOW/MEDIUM/HIGH", ".env 임계값 · 결정론적"),
@@ -347,7 +400,61 @@ def build_pages(m: dict, study: dict, font_set: dict) -> list[Path]:
     page.body(" ".join(lines))
     pages.append(page.save(OUTPUT_DIR / "master_page_8.png"))
 
-    # --- P9 limits -----------------------------------------------------------
+    # --- P9 generation logic -------------------------------------------------
+    page = Page(font_set)
+    page.title("부록 A. 수요 생성 로직", "합성 데이터가 만들어지는 정확한 절차")
+    page.heading("A.1 분당 기대수요를 이루는 항")
+    page.table(["항", "식", "의미"], [list(row) for row in DEMAND_TERMS], [200, 640, 660], row_height=48)
+    page.heading("A.2 기대수요에서 관측까지")
+    page.table(["단계", "내용", "식"], [list(row) for row in GENERATION_STEPS], [110, 480, 910], row_height=50)
+    page.note(
+        "5단계가 이 데이터셋의 핵심이다. 판매량은 수요가 아니라 재고로 잘린 수요이며, "
+        "잠재 수요 D를 따로 보존해 두었기 때문에 그 편향을 정량화할 수 있다."
+    )
+    pages.append(page.save(OUTPUT_DIR / "master_page_9.png"))
+
+    # --- P10 training --------------------------------------------------------
+    page = Page(font_set)
+    page.title("부록 B. 학습 절차", "데이터 몇 개를 어떻게 학습시켰는가")
+    page.heading("B.1 데이터 수량")
+    page.table(
+        ["단계", "수량", "비고"],
+        [
+            ["축제 1회", "1,728행", "12부스 × 4메뉴 × 3일 × 30분 스냅샷 12개"],
+            ["최종 학습표", f"{m['rows']:,}행 × 40열", f"{m['cells']}칸 (연도 3 × 캠퍼스 3), 각각 독립 시드"],
+            ["검열 제외", f"−{m['censored_rows']:,}행", f"타깃이 품절로 잘린 {m['censored_share']:.1%}"],
+            ["학습", f"{m['train_rows']:,}행", "2023–2024 · 독립 축제 6회"],
+            ["시간 홀드아웃", f"{m['test_rows']:,}행", "2025 · 독립 축제 3회, 학습에 전혀 쓰지 않음"],
+            ["입력", f"피처 {m['feature_count']}개", "직접 13개 + 파생 2개"],
+            ["타깃", "future_sales_30m", "다음 30분 판매량"],
+        ],
+        [240, 320, 940],
+        row_height=48,
+    )
+    page.heading("B.2 절차")
+    page.table(["단계", "내용", "상세"], [list(row) for row in TRAINING_STEPS], [110, 330, 1060], row_height=48)
+    page.note(
+        "분할은 행이 아니라 칸 단위다. 같은 축제의 행이 학습과 검증에 나뉘어 들어가면 "
+        "모델이 그 축제의 날씨와 유동인구를 이미 본 상태가 된다."
+    )
+    pages.append(page.save(OUTPUT_DIR / "master_page_10.png"))
+
+    # --- P11 inference -------------------------------------------------------
+    page = Page(font_set)
+    page.title("부록 C. 추론 로직", "화면의 숫자가 나오기까지")
+    page.heading("C.1 LangGraph 실행 순서")
+    page.table(["단계", "노드", "하는 일"], [list(row) for row in INFERENCE_STEPS], [110, 400, 990], row_height=48)
+    page.heading("C.2 위험 판정과 Action 규칙")
+    page.table(["위험도", "생성되는 Action", "조건"], [list(row) for row in ACTION_RULES], [180, 720, 600], row_height=58)
+    page.body(
+        "예측은 ML이, 위험 판정과 Action 선택은 결정론적 규칙이 맡는다. 모델이 바뀌어도 "
+        "운영 판단의 근거는 같은 방식으로 설명된다. 어떤 Action도 운영자가 승인하기 전에는 "
+        "PENDING 상태로 남으며, 승인·실행 이력은 agent_actions 테이블에 남는다."
+    )
+    page.note("임계값 0.10 / 0.30은 .env의 RISK_LOW_THRESHOLD · RISK_HIGH_THRESHOLD로 조정할 수 있다.")
+    pages.append(page.save(OUTPUT_DIR / "master_page_11.png"))
+
+    # --- P12 limits ----------------------------------------------------------
     page = Page(font_set)
     page.title("8. 한계와 다음 단계", "지금 주장할 수 없는 것")
     page.heading("8.1 한계")
@@ -376,7 +483,7 @@ def build_pages(m: dict, study: dict, font_set: dict) -> list[Path]:
         "남는 것 자체가 처음 만들어지는 자료다. 예측 정확도는 그 다음 단계의 이야기다. "
         "측정 체계가 없는 영역에서는 측정 자체가 첫 번째 기여가 된다."
     )
-    pages.append(page.save(OUTPUT_DIR / "master_page_9.png"))
+    pages.append(page.save(OUTPUT_DIR / "master_page_12.png"))
     return pages
 
 

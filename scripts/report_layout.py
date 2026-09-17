@@ -33,6 +33,23 @@ def fonts() -> dict[str, ImageFont.FreeTypeFont]:
     }
 
 
+# AppleGothic carries no glyph for these, so PIL draws an empty box. Substituting
+# at draw time means a report cannot ship a row of squares because someone typed
+# a typographic minus instead of a hyphen.
+GLYPH_SUBSTITUTIONS = {
+    "\u2212": "-",   # MINUS SIGN
+    "\u2013": "-",   # EN DASH
+    "\u2014": "-",   # EM DASH
+    "\u00a0": " ",   # NO-BREAK SPACE
+}
+
+
+def safe_text(text: str) -> str:
+    for source, replacement in GLYPH_SUBSTITUTIONS.items():
+        text = text.replace(source, replacement)
+    return text
+
+
 class Page:
     def __init__(self, font_set: dict[str, ImageFont.FreeTypeFont]) -> None:
         self.image = Image.new("RGB", (PAGE_WIDTH, PAGE_HEIGHT), "white")
@@ -41,19 +58,20 @@ class Page:
         self.y = 0
 
     def title(self, text: str, subtitle: str = "") -> None:
-        self.draw.text((MARGIN, 95), text, font=self.fonts["title"], fill="black")
+        self.draw.text((MARGIN, 95), safe_text(text), font=self.fonts["title"], fill="black")
         self.draw.line((MARGIN, 178, PAGE_WIDTH - MARGIN, 178), fill=NAVY, width=4)
         self.y = 235
         if subtitle:
-            self.draw.text((MARGIN, self.y), subtitle, font=self.fonts["body"], fill=GREY)
+            self.draw.text((MARGIN, self.y), safe_text(subtitle), font=self.fonts["body"], fill=GREY)
             self.y += 70
 
     def heading(self, text: str) -> None:
         self.y += 16
-        self.draw.text((MARGIN, self.y), text, font=self.fonts["heading"], fill="black")
+        self.draw.text((MARGIN, self.y), safe_text(text), font=self.fonts["heading"], fill="black")
         self.y += 56
 
     def body(self, text: str, max_chars: int = 50) -> None:
+        text = safe_text(text)
         line = ""
         for word in text.split(" "):
             candidate = f"{line} {word}".strip()
@@ -70,7 +88,7 @@ class Page:
 
     def bullets(self, items: list[str]) -> None:
         for item in items:
-            self.draw.text((MARGIN + 18, self.y), "• " + item, font=self.fonts["body"], fill="black")
+            self.draw.text((MARGIN + 18, self.y), safe_text("• " + item), font=self.fonts["body"], fill="black")
             self.y += 44
         self.y += 8
 
@@ -89,13 +107,13 @@ class Page:
                 color = "black"
             for value, width in zip(row, widths):
                 self.draw.rectangle((x, self.y, x + width, self.y + row_height), fill=fill, outline=(205, 205, 205))
-                self.draw.text((x + 14, self.y + row_height // 2 - 12), value, font=self.fonts["small"], fill=color)
+                self.draw.text((x + 14, self.y + row_height // 2 - 12), safe_text(value), font=self.fonts["small"], fill=color)
                 x += width
             self.y += row_height
         self.y += 26
 
     def note(self, text: str) -> None:
-        self.draw.text((MARGIN, self.y), text, font=self.fonts["tiny"], fill=GREY)
+        self.draw.text((MARGIN, self.y), safe_text(text), font=self.fonts["tiny"], fill=GREY)
         self.y += 32
 
     def paste(self, path: Path, max_size: tuple[int, int]) -> None:
