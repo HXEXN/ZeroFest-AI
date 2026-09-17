@@ -20,72 +20,82 @@ from services.chat import ask_operations
 
 configure_page("AI 운영 Copilot", "✨", mobile=True)
 
-# AI Copilot 전용 모바일 채팅 입력창 레이아웃 보정
+# -------------------------------------------------------------------
+# AI Copilot 전용 레이아웃
+# st.chat_input()의 fixed bottom container를 사용하지 않고
+# 본문 내부 form composer를 사용해 ZeroFest 하단 네비와 충돌하지 않게 한다.
+# -------------------------------------------------------------------
 st.markdown(
     """
     <style>
     [data-testid="stMainBlockContainer"],
     .block-container {
-        padding-bottom: 205px !important;
+        padding-bottom: 115px !important;
     }
 
-    [data-testid="stBottomBlockContainer"] {
-        width: min(440px, 100vw) !important;
-        max-width: 440px !important;
-        left: 50% !important;
-        right: auto !important;
-        transform: translateX(-50%) !important;
-        bottom: 64px !important;
-        padding: 8px 14px 10px !important;
-        box-sizing: border-box !important;
-
-        background: rgba(250, 248, 255, 0.97) !important;
-        border-top: 1px solid #e2e8f0 !important;
-        box-shadow: 0 -4px 16px rgba(15, 23, 42, 0.07) !important;
-        backdrop-filter: blur(14px);
-
-        z-index: 90 !important;
+    /* Copilot 대화 영역 */
+    [data-testid="stChatMessage"] {
+        background: transparent !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
     }
 
-    [data-testid="stBottomBlockContainer"] > div {
-        width: 100% !important;
-        max-width: none !important;
-        padding: 0 !important;
-    }
-
-    [data-testid="stChatInput"] {
-        width: 100% !important;
-        max-width: none !important;
-        margin: 0 !important;
-    }
-
-    [data-testid="stChatInput"] > div {
-        border-radius: 16px !important;
-        border: 1px solid #cbd5e1 !important;
-        background: #ffffff !important;
-        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06) !important;
-    }
-
-    [data-testid="stChatInput"] textarea {
-        min-height: 46px !important;
-        max-height: 120px !important;
-        padding-top: 12px !important;
-        padding-bottom: 12px !important;
+    [data-testid="stChatMessageContent"] {
         font-size: 14px !important;
-        line-height: 1.35 !important;
+        line-height: 1.55 !important;
     }
 
-    [data-testid="stChatInput"] button {
-        width: 38px !important;
-        height: 38px !important;
-        min-height: 38px !important;
-        border-radius: 10px !important;
-        margin: 4px !important;
+    /* 입력 폼 */
+    div[data-testid="stForm"] {
+        background: #ffffff !important;
+        border: 1px solid #dbe3ee !important;
+        border-radius: 16px !important;
+        padding: 10px !important;
+        margin-top: 14px !important;
+        box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06) !important;
+    }
+
+    div[data-testid="stForm"] [data-testid="stTextInput"] {
+        margin-bottom: 0 !important;
+    }
+
+    div[data-testid="stForm"] [data-testid="stTextInput"] > div > div {
+        border-radius: 12px !important;
+        border-color: #cbd5e1 !important;
+        background: #f8fafc !important;
+        min-height: 48px !important;
+    }
+
+    div[data-testid="stForm"] input {
+        font-size: 14px !important;
+        min-height: 46px !important;
+    }
+
+    div[data-testid="stForm"] [data-testid="stFormSubmitButton"] button {
+        min-height: 48px !important;
+        height: 48px !important;
+        border-radius: 12px !important;
+        font-size: 13px !important;
+        font-weight: 850 !important;
+        white-space: nowrap !important;
+        padding: 0 10px !important;
+    }
+
+    /* 하단 부가 액션 */
+    .zf-chat-footer-note {
+        font-size: 11px;
+        line-height: 1.5;
+        color: #64748b;
+        margin: 8px 2px 2px;
     }
 
     @media (max-width: 440px) {
-        [data-testid="stBottomBlockContainer"] {
-            width: 100vw !important;
+        div[data-testid="stForm"] {
+            padding: 8px !important;
+        }
+
+        div[data-testid="stForm"] [data-testid="stHorizontalBlock"] {
+            gap: 8px !important;
         }
     }
     </style>
@@ -112,18 +122,23 @@ page_header(
     "채팅은 실행 권한이 없고 최종 Action은 운영자가 승인합니다.",
 )
 
+
+# -------------------------------------------------------------------
+# 대화 범위
+# -------------------------------------------------------------------
+
 booths = db.get_booths()
 
 scope_options = [None] + [item["booth_id"] for item in booths]
 
-labels = {
-    None: "축제 전체 · Control Tower"
-}
-
+labels = {None: "축제 전체 · Control Tower"}
 labels.update(
     {
-        item["booth_id"]:
-        f"{item['zone']}구역 · {item['booth_name']} · {item['menu_name']}"
+        item["booth_id"]: (
+            f"{item['zone']}구역 · "
+            f"{item['booth_name']} · "
+            f"{item['menu_name']}"
+        )
         for item in booths
     }
 )
@@ -133,6 +148,11 @@ scope = st.selectbox(
     scope_options,
     format_func=labels.get,
 )
+
+
+# -------------------------------------------------------------------
+# 현재 운영 상태
+# -------------------------------------------------------------------
 
 rows = db.dashboard_rows()
 
@@ -163,10 +183,6 @@ else:
         ),
     )
 
-
-# ---------------------------------------------------------
-# 현재 상태 KPI
-# ---------------------------------------------------------
 
 m1, m2, m3, m4 = st.columns(4)
 
@@ -199,9 +215,9 @@ with m4:
     )
 
 
-# ---------------------------------------------------------
+# -------------------------------------------------------------------
 # 빠른 질문
-# ---------------------------------------------------------
+# -------------------------------------------------------------------
 
 st.markdown("#### 빠른 질문")
 
@@ -225,22 +241,22 @@ for index, label in enumerate(prompts):
         queued_prompt = label
 
 
-# ---------------------------------------------------------
+# -------------------------------------------------------------------
 # 채팅 히스토리
-# ---------------------------------------------------------
+# -------------------------------------------------------------------
 
 scope_key = scope or "all"
-
 history_key = f"operations_chat:{scope_key}"
 
 if history_key not in st.session_state:
     st.session_state[history_key] = [
         {
             "role": "assistant",
-            "content":
+            "content": (
                 "현재 운영 DB와 AI 예측이 연결되었습니다. "
                 "위험 우선순위, 할인 근거, 품절 시각, 날씨 영향, "
-                "추천 Action을 물어보세요.",
+                "추천 Action을 물어보세요."
+            ),
             "source": "ZeroFest AI",
             "evidence": [],
         }
@@ -275,17 +291,44 @@ for message in st.session_state[history_key]:
             )
 
 
-# ---------------------------------------------------------
-# AI 입력창
-# ---------------------------------------------------------
+# -------------------------------------------------------------------
+# Copilot 입력창
+#
+# st.chat_input()을 사용하지 않는다.
+# Streamlit의 fixed bottom layer와 ZeroFest fixed bottom nav가 겹치는
+# 문제를 원천적으로 피하기 위해 본문 내부 form을 사용한다.
+# -------------------------------------------------------------------
 
-typed_prompt = st.chat_input(
-    "예: 닭꼬치를 왜 할인해야 해?"
-)
+with st.form(
+    "copilot_input_form",
+    clear_on_submit=True,
+    border=False,
+):
 
-question = (
-    queued_prompt
-    or typed_prompt
+    input_col, send_col = st.columns(
+        [4.6, 1.15],
+        vertical_alignment="bottom",
+    )
+
+    with input_col:
+        typed_prompt = st.text_input(
+            "AI Copilot 질문",
+            placeholder="예: 닭꼬치를 왜 할인해야 해?",
+            label_visibility="collapsed",
+        )
+
+    with send_col:
+        submitted = st.form_submit_button(
+            "전송",
+            type="primary",
+            width="stretch",
+        )
+
+
+question = queued_prompt or (
+    typed_prompt.strip()
+    if submitted and typed_prompt
+    else None
 )
 
 if question:
@@ -324,22 +367,21 @@ if question:
     st.rerun()
 
 
-# ---------------------------------------------------------
-# 하단 제어
-# ---------------------------------------------------------
+# -------------------------------------------------------------------
+# 하단 액션
+# -------------------------------------------------------------------
 
-bottom_left, bottom_right = (
-    st.columns(2)
-)
+bottom_left, bottom_right = st.columns(2)
 
 if bottom_left.button(
     "대화 초기화",
     width="stretch",
 ):
 
-    del st.session_state[
-        history_key
-    ]
+    if history_key in st.session_state:
+        del st.session_state[
+            history_key
+        ]
 
     st.rerun()
 
