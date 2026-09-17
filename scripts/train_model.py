@@ -10,21 +10,24 @@ sys.path.insert(0, str(ROOT))
 from sklearn.ensemble import GradientBoostingRegressor  # noqa: E402
 from sklearn.metrics import mean_absolute_error, r2_score  # noqa: E402
 
-from models.demand_model import FEATURES, load_historical_data  # noqa: E402
+from models.demand_model import FEATURES, MODEL_PARAMS, load_historical_data, uncensored  # noqa: E402
 
 
 if __name__ == "__main__":
-    history = load_historical_data()
+    raw = load_historical_data()
+    history = uncensored(raw)
     train = history[history["festival_year"] < history["festival_year"].max()]
     test = history[history["festival_year"] == history["festival_year"].max()]
-    x_train, y_train = train[FEATURES], train["future_sales_30m"]
-    x_test, y_test = test[FEATURES], test["future_sales_30m"]
-    model = GradientBoostingRegressor(
-        random_state=42, n_estimators=120, max_depth=3, learning_rate=0.045, loss="huber"
-    )
-    model.fit(x_train, y_train)
-    prediction = model.predict(x_test)
-    print("Dataset: 2023–2025 Sample / Synthetic Historical Festival Dataset")
-    print(f"Rows: {len(history):,} · train {len(train):,} · time-holdout {len(test):,}")
-    print(f"Hold-out MAE: {mean_absolute_error(y_test, prediction):.2f} items / 30m")
-    print(f"Hold-out R²: {r2_score(y_test, prediction):.3f}")
+    model = GradientBoostingRegressor(**MODEL_PARAMS)
+    model.fit(train[FEATURES], train["future_sales_30m"])
+    prediction = model.predict(test[FEATURES])
+    actual = test["future_sales_30m"]
+    baseline = test["recent_sales_30m"]
+
+    print("Dataset: 2023–2025 Final Synthetic Festival Training Dataset")
+    print(f"Rows: {len(raw):,} · censored dropped {len(raw) - len(history):,} · usable {len(history):,}")
+    print(f"Split: train {len(train):,} (2023–2024) · time-holdout {len(test):,} ({int(test['festival_year'].iloc[0])})")
+    print(f"Features: {len(FEATURES)}")
+    print()
+    print(f"Baseline (persistence)  MAE {mean_absolute_error(actual, baseline):6.2f} · R² {r2_score(actual, baseline):6.3f}")
+    print(f"GradientBoosting        MAE {mean_absolute_error(actual, prediction):6.2f} · R² {r2_score(actual, prediction):6.3f}")

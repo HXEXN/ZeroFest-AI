@@ -6,6 +6,7 @@ import streamlit as st
 
 from agents.graph import ensure_predictions
 from components.ui import configure_page, demo_banner, flow_strip
+from services import database as db
 from services.database import initialize_database
 
 
@@ -34,14 +35,21 @@ with left:
         unsafe_allow_html=True,
     )
 with right:
+    # Read the live prediction instead of printing a fixed card, so the landing
+    # page can never disagree with what the dashboard shows.
+    headline = db.get_booth_state("booth-chicken")
+    headline_prediction = db.get_latest_prediction("booth-chicken") or {}
+    risk = str(headline_prediction.get("risk_level", "-"))
+    risk_class = {"HIGH": "zf-risk-high", "MEDIUM": "zf-risk-medium"}.get(risk, "zf-risk-low")
     st.markdown(
-        """
+        f"""
         <div class="zf-card" style="margin-top:1.5rem;padding:1.5rem">
-          <div class="zf-kicker">LIVE DEMO · 19:00</div>
-          <h2 style="margin:.4rem 0;color:#102a22">A구역 닭꼬치</h2>
-          <div style="font-size:2.6rem;font-weight:850;color:#ef4444">180 <small style="font-size:1rem">재고</small></div>
-          <p class="zf-muted">최근 판매 감소 · 1시간 뒤 강수 80% · 공연 종료 예정</p>
-          <div class="zf-risk-high">예상 잔여 70 · HIGH</div>
+          <div class="zf-kicker">LIVE DEMO · {db.get_demo_time():%H:%M}</div>
+          <h2 style="margin:.4rem 0;color:#102a22">{headline["zone"]}구역 {headline["menu_name"]}</h2>
+          <div style="font-size:2.6rem;font-weight:850;color:#ef4444">{headline["current_stock"]}
+            <small style="font-size:1rem">재고</small></div>
+          <p class="zf-muted">최근 30분 {headline["recent_sales_30m"]}개 · 이전 30분 {headline["previous_sales_30m"]}개</p>
+          <div class="{risk_class}">예상 잔여 {headline_prediction.get("expected_remaining", "-")} · {risk}</div>
         </div>
         """,
         unsafe_allow_html=True,

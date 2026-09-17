@@ -22,8 +22,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate reproducible historical data
-        run: python scripts/generate_historical_data.py
+      - name: Rebuild the synthetic festival dataset from scratch
+        run: |
+          python scripts/generate_synthetic_festival_data.py
+          python scripts/prepare_final_training_data.py
 
       - name: Run tests
         run: pytest -q

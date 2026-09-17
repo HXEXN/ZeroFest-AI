@@ -15,7 +15,7 @@ from services.database import reset_demo  # noqa: E402
 if __name__ == "__main__":
     names = [
         "sample_sales.csv", "sample_inventory.csv", "sample_weather.csv",
-        "sample_events.csv", "sample_historical_sales.csv",
+        "sample_events.csv", "final_training_dataset.csv",
     ]
     for name in names:
         path = ROOT / "data" / name

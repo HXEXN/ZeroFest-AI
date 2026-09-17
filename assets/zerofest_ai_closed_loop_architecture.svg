@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1000" viewBox="0 0 1800 1000">
+  <defs>
+    <linearGradient id="zf-bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FBFCFE"/><stop offset="1" stop-color="#F2F7F7"/></linearGradient>
+    <filter id="zf-shadow" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#0A2745" flood-opacity=".08"/></filter>
+    <marker id="zf-a" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#77899A"/></marker>
+    <marker id="zf-g" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#14A57F"/></marker>
+  </defs>
+  <rect width="1800" height="1000" fill="url(#zf-bg)"/>
+  <g font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif">
+    <text x="90" y="82" font-size="42" font-weight="700" fill="#102A43">ZeroFest AI 폐루프 아키텍처</text>
+    <text x="90" y="123" font-size="20" fill="#6A7D90">예측을 운영 승인과 학생 수요 변화까지 연결하고, 새 판매 데이터로 다시 학습합니다.</text>
+
+    <g font-size="15" font-weight="700" letter-spacing="1.5">
+      <text x="90" y="190" fill="#6A7D90">01 · DATA INPUT</text>
+      <text x="430" y="190" fill="#2166D1">02 · PREDICT &amp; ASSESS</text>
+      <text x="1385" y="190" fill="#7047EB">03 · DECIDE</text>
+      <text x="770" y="650" fill="#D36B1F">04 · APPROVE &amp; ACT</text>
+    </g>
+
+    <g filter="url(#zf-shadow)">
+      <rect x="90" y="220" width="250" height="106" rx="18" fill="#FFFFFF" stroke="#CAD6E2" stroke-width="2"/>
+      <rect x="90" y="350" width="250" height="106" rx="18" fill="#FFFFFF" stroke="#CAD6E2" stroke-width="2"/>
+      <rect x="90" y="480" width="250" height="106" rx="18" fill="#FFFFFF" stroke="#CAD6E2" stroke-width="2"/>
+    </g>
+    <g text-anchor="middle" fill="#223C54">
+      <text x="215" y="259" font-size="21" font-weight="700">과거 축제 이력</text><text x="215" y="292" font-size="18" fill="#607589">2023–2025 합성 CSV</text>
+      <text x="215" y="389" font-size="21" font-weight="700">당일 판매·재고</text><text x="215" y="422" font-size="18" fill="#607589">30분 단위 상태</text>
+      <text x="215" y="519" font-size="21" font-weight="700">날씨·공연 일정</text><text x="215" y="552" font-size="18" fill="#607589">외부 맥락</text>
+    </g>
+    <rect x="110" y="232" width="92" height="24" rx="12" fill="#FFF4D6"/><text x="156" y="249" text-anchor="middle" font-size="13" font-weight="700" fill="#9B6712">SYNTHETIC</text>
+
+    <g fill="none" stroke="#8899AA" stroke-width="3" marker-end="url(#zf-a)">
+      <path d="M340 273L410 367"/><path d="M340 403L410 403"/><path d="M340 533L410 439"/>
+      <path d="M650 403L715 403"/><path d="M955 403L1020 403"/><path d="M1260 403L1325 403"/>
+      <path d="M1450 468L1450 685"/><path d="M1325 745L1260 745"/><path d="M1020 745L955 745"/>
+    </g>
+
+    <g filter="url(#zf-shadow)">
+      <rect x="410" y="335" width="240" height="136" rx="20" fill="#EEF5FF" stroke="#3478F6" stroke-width="3"/>
+      <rect x="715" y="335" width="240" height="136" rx="20" fill="#EDF9F2" stroke="#27A65A" stroke-width="3"/>
+      <rect x="1020" y="335" width="240" height="136" rx="20" fill="#FFF5EC" stroke="#F47B20" stroke-width="3"/>
+      <rect x="1325" y="335" width="250" height="136" rx="20" fill="#F5F0FF" stroke="#8252F2" stroke-width="3"/>
+    </g>
+    <g text-anchor="middle">
+      <text x="530" y="377" font-size="22" font-weight="700" fill="#2166D1">Feature Pipeline</text><text x="530" y="410" font-size="20" fill="#2166D1">검증·파생변수</text><text x="530" y="442" font-size="16" fill="#607589">결측 · 범위 · 누수 점검</text>
+      <text x="835" y="377" font-size="22" font-weight="700" fill="#238D4F">수요예측 ML</text><text x="835" y="410" font-size="20" fill="#238D4F">Gradient Boosting</text><text x="835" y="442" font-size="16" fill="#607589">품목별 30분 수요 예측</text>
+      <text x="1140" y="377" font-size="22" font-weight="700" fill="#D96517">폐기위험 규칙</text><text x="1140" y="410" font-size="19" fill="#D96517">LOW · MEDIUM · HIGH</text><text x="1140" y="442" font-size="16" fill="#607589">재고 · 판매속도 기반</text>
+      <text x="1450" y="377" font-size="22" font-weight="700" fill="#7047EB">LangGraph Agent</text><text x="1450" y="410" font-size="20" fill="#7047EB">행동 후보 생성</text><text x="1450" y="442" font-size="16" fill="#607589">절차 · 근거 · 옵션 구성</text>
+    </g>
+
+    <rect x="1345" y="535" width="210" height="72" rx="36" fill="#F0EAFE"/>
+    <text x="1450" y="565" text-anchor="middle" font-size="17" font-weight="700" fill="#7047EB">Human-in-the-loop</text>
+    <text x="1450" y="589" text-anchor="middle" font-size="15" fill="#607589">사람이 최종 실행 결정</text>
+
+    <g filter="url(#zf-shadow)">
+      <rect x="1325" y="685" width="250" height="120" rx="20" fill="#FFF0F0" stroke="#F05252" stroke-width="3"/>
+      <rect x="1020" y="685" width="240" height="120" rx="20" fill="#FFF5EC" stroke="#F47B20" stroke-width="3"/>
+      <rect x="715" y="685" width="240" height="120" rx="20" fill="#EDF9F2" stroke="#21A87D" stroke-width="3"/>
+    </g>
+    <g text-anchor="middle">
+      <text x="1450" y="730" font-size="23" font-weight="700" fill="#C83C3C">운영자 승인</text><text x="1450" y="766" font-size="18" font-weight="700" fill="#C83C3C">미승인 시 실행 없음</text>
+      <text x="1140" y="726" font-size="22" font-weight="700" fill="#D96517">승인 Action 실행</text><text x="1140" y="763" font-size="18" fill="#D96517">할인 · 조리중단 · 이동</text>
+      <text x="835" y="726" font-size="22" font-weight="700" fill="#168765">학생 혜택 노출</text><text x="835" y="763" font-size="18" fill="#168765">수요 유도</text>
+    </g>
+
+    <path d="M715 745L385 745L385 455L410 455" fill="none" stroke="#14A57F" stroke-width="4" marker-end="url(#zf-g)"/>
+    <rect x="420" y="711" width="250" height="68" rx="16" fill="#EAF7F2"/>
+    <text x="545" y="739" text-anchor="middle" font-size="17" font-weight="700" fill="#168765">Feedback Loop</text><text x="545" y="762" text-anchor="middle" font-size="15" fill="#607589">판매·반응 결과를 다음 예측에 환류</text>
+
+    <rect x="90" y="875" width="1485" height="70" rx="18" fill="#102A43"/>
+    <text x="832" y="918" text-anchor="middle" font-size="18" font-weight="700" fill="#FFFFFF">ML은 수치 예측 · 규칙은 위험 판정 · Agent는 절차 관리 · 사람은 실행 결정 · LLM은 근거 설명</text>
+  </g>
+</svg>

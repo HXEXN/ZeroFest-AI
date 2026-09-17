@@ -15,12 +15,11 @@ DEMO_TIME = "2026-05-22T19:00:00"
 
 load_dotenv(ROOT_DIR / ".env")
 
-DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() in {"1", "true", "yes", "on"}
 RISK_LOW_THRESHOLD = float(os.getenv("RISK_LOW_THRESHOLD", "0.10"))
 RISK_HIGH_THRESHOLD = float(os.getenv("RISK_HIGH_THRESHOLD", "0.30"))
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 _historical_path = os.getenv("HISTORICAL_DATA_PATH", "").strip()
-HISTORICAL_DATA_PATH = Path(_historical_path) if _historical_path else DATA_DIR / "sample_historical_sales.csv"
+HISTORICAL_DATA_PATH = Path(_historical_path) if _historical_path else DATA_DIR / "final_training_dataset.csv"
 
 
 ACTION_LABELS = {

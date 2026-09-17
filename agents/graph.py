@@ -82,6 +82,9 @@ def execute_action(state: WorkflowState) -> dict[str, Any]:
             continue
         db.mark_action(action_id, "APPROVED", state["db_path"])
         if action["action_type"] == "DISCOUNT":
+            # Freeze the pre-intervention forecast so the before/after comparison
+            # is against what the model actually said before anything was applied.
+            db.record_intervention_baseline(state["booth_id"], state["db_path"])
             db.activate_promotion(state["booth_id"], 20, state["db_path"])
         elif action["action_type"] == "STOP_COOKING":
             db.set_setting(f"cooking_halted:{state['booth_id']}", "1", state["db_path"])

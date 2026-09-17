@@ -6,6 +6,12 @@ __pycache__/
 .venv/
 .streamlit/secrets.toml
 data/zerofest.db
+# Regenerable byproducts of scripts/generate_synthetic_festival_data.py that no
+# code reads. final_training_dataset.csv and the 30-minute feature snapshot are
+# committed because the app, the tests and the reports load them.
+data/synthetic_festival_second_snapshot.csv
+data/synthetic_festival_minute_snapshot.csv
+data/synthetic_festival_event_log.csv
 data/freshretailnet_*.parquet
 models/artifacts/
 outputs/

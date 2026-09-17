@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS sales_snapshots (
     booth_id TEXT NOT NULL REFERENCES booths(booth_id),
     menu_id TEXT NOT NULL REFERENCES menus(menu_id),
     sales_quantity INTEGER NOT NULL,
-    revenue INTEGER NOT NULL
+    revenue INTEGER NOT NULL,
+    ticket_count INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS weather (
     timestamp TEXT PRIMARY KEY,
@@ -162,23 +163,29 @@ def _read_csv(name: str) -> list[dict[str, str]]:
         return list(csv.DictReader(handle))
 
 
+ADDED_COLUMNS = {
+    "predictions": [
+        "estimated_stockout_at TEXT",
+        "minutes_to_stockout INTEGER",
+        "stockout_before_close INTEGER NOT NULL DEFAULT 0",
+    ],
+    "sales_snapshots": ["ticket_count INTEGER NOT NULL DEFAULT 1"],
+}
+
+
 def initialize_database(db_path: Path | str = DB_PATH) -> None:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    historical_rows = len(_read_csv("sample_historical_sales.csv"))
+    historical_rows = len(_read_csv("final_training_dataset.csv"))
     with connection(path) as conn:
         conn.executescript(SCHEMA)
-        existing_prediction_columns = {
-            row["name"] for row in conn.execute("PRAGMA table_info(predictions)").fetchall()
-        }
-        for definition in [
-            "estimated_stockout_at TEXT",
-            "minutes_to_stockout INTEGER",
-            "stockout_before_close INTEGER NOT NULL DEFAULT 0",
-        ]:
-            column_name = definition.split()[0]
-            if column_name not in existing_prediction_columns:
-                conn.execute(f"ALTER TABLE predictions ADD COLUMN {definition}")
+        # CREATE TABLE IF NOT EXISTS leaves an existing database on its old schema,
+        # so every column added after the first release is also applied here.
+        for table, definitions in ADDED_COLUMNS.items():
+            existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for definition in definitions:
+                if definition.split()[0] not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {definition}")
         conn.execute(
             """INSERT OR IGNORE INTO data_sources
                (source_id, source_name, source_type, period, row_count, status, data_class, last_validated_at)
@@ -236,11 +243,11 @@ def seed_demo_data(db_path: Path | str = DB_PATH) -> None:
         for row in _read_csv("sample_sales.csv"):
             conn.execute(
                 """INSERT INTO sales_snapshots
-                   (timestamp, booth_id, menu_id, sales_quantity, revenue)
-                   VALUES (?, ?, ?, ?, ?)""",
+                   (timestamp, booth_id, menu_id, sales_quantity, revenue, ticket_count)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (
                     row["timestamp"], row["booth_id"], row["menu_id"],
-                    int(row["sales_quantity"]), int(row["revenue"]),
+                    int(row["sales_quantity"]), int(row["revenue"]), int(row["ticket_count"]),
                 ),
             )
         for row in _read_csv("sample_weather.csv"):
@@ -368,14 +375,31 @@ def get_booth_state(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, A
     )
     if not row:
         raise ValueError(f"Unknown booth: {booth_id}")
-    recent = query_all(
-        """SELECT sales_quantity FROM sales_snapshots WHERE booth_id=?
-           ORDER BY timestamp DESC, snapshot_id DESC LIMIT 2""",
-        (booth_id,),
-        db_path,
-    )
-    row["recent_sales_30m"] = int(recent[0]["sales_quantity"]) if recent else 0
-    row["previous_sales_30m"] = int(recent[1]["sales_quantity"]) if len(recent) > 1 else row["recent_sales_30m"]
+    # Sum over real 30-minute windows rather than reading the last row. Operator
+    # input arrives one order at a time, so "the latest row" is one party, not
+    # half an hour of trade.
+    now = get_demo_time(db_path)
+    def _window(start_offset: int, end_offset: int) -> dict[str, int]:
+        totals = query_one(
+            """SELECT COALESCE(SUM(sales_quantity), 0) AS quantity,
+                      COALESCE(SUM(ticket_count), 0) AS tickets
+               FROM sales_snapshots
+               WHERE booth_id=? AND timestamp > ? AND timestamp <= ?""",
+            (
+                booth_id,
+                (now - timedelta(minutes=start_offset)).isoformat(),
+                (now - timedelta(minutes=end_offset)).isoformat(),
+            ),
+            db_path,
+        ) or {}
+        return {"quantity": int(totals.get("quantity") or 0), "tickets": int(totals.get("tickets") or 0)}
+
+    recent_window = _window(30, 0)
+    previous_window = _window(60, 30)
+    row["recent_sales_30m"] = recent_window["quantity"]
+    row["previous_sales_30m"] = previous_window["quantity"] or recent_window["quantity"]
+    # One button press is one party, so the operator records parties without extra work.
+    row["recent_tickets_30m"] = recent_window["tickets"]
     row["student_response_simulated"] = get_setting("student_response_simulated", "0", db_path) == "1"
     row["festival_total_days"] = int(get_setting("festival_total_days", "3", db_path))
     promo = query_one(
@@ -383,6 +407,7 @@ def get_booth_state(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, A
         (booth_id,), db_path,
     )
     row["active_discount_rate"] = int(promo["discount_rate"]) if promo else 0
+    row["discount_started_at"] = promo["start_time"] if promo else None
     return row
 
 
@@ -493,7 +518,13 @@ def get_active_promotions(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]
     )
 
 
-def record_sale(booth_id: str, quantity: int, db_path: Path | str = DB_PATH) -> None:
+def record_sale(booth_id: str, quantity: int, tickets: int = 1, db_path: Path | str = DB_PATH) -> None:
+    """Record one order of `quantity` items.
+
+    A press of '3개' is one customer buying three, not three customers buying one.
+    That distinction is what makes ticket count an observation rather than a
+    restatement of sales volume, and it costs the operator no extra input.
+    """
     if quantity <= 0:
         return
     state = get_booth_state(booth_id, db_path)
@@ -502,9 +533,9 @@ def record_sale(booth_id: str, quantity: int, db_path: Path | str = DB_PATH) -> 
     timestamp = get_demo_time(db_path).isoformat()
     with connection(db_path) as conn:
         conn.execute(
-            """INSERT INTO sales_snapshots(timestamp, booth_id, menu_id, sales_quantity, revenue)
-               VALUES (?, ?, ?, ?, ?)""",
-            (timestamp, booth_id, state["menu_id"], sold, sold * unit_price),
+            """INSERT INTO sales_snapshots(timestamp, booth_id, menu_id, sales_quantity, revenue, ticket_count)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (timestamp, booth_id, state["menu_id"], sold, sold * unit_price, max(1, tickets)),
         )
         conn.execute(
             """INSERT INTO inventory_snapshots(timestamp, booth_id, menu_id, current_stock, additional_stock)
@@ -524,8 +555,81 @@ def adjust_stock(booth_id: str, delta: int, db_path: Path | str = DB_PATH) -> No
         )
 
 
-def simulate_student_response(db_path: Path | str = DB_PATH) -> None:
+STUDENT_RESPONSE_WINDOW_MINUTES = 30
+# Bakery median basket, used only to split simulated demand into parties.
+AVERAGE_PARTY_SIZE = 2.4
+INTERVENTION_BASELINE_KEY = "intervention_baseline"
+
+
+def record_intervention_baseline(booth_id: str, db_path: Path | str = DB_PATH) -> None:
+    """Remember the forecast that was on screen before any action was executed."""
+    key = f"{INTERVENTION_BASELINE_KEY}:{booth_id}"
+    if get_setting(key, "", db_path):
+        return
+    prediction = get_latest_prediction(booth_id, db_path)
+    if prediction:
+        set_setting(key, json.dumps({
+            "expected_remaining": int(prediction["expected_remaining"]),
+            "predicted_sales_30m": int(prediction["predicted_sales_30m"]),
+            "risk_level": str(prediction["risk_level"]),
+            "current_stock": int(get_booth_state(booth_id, db_path)["current_stock"]),
+            "timestamp": get_demo_time(db_path).isoformat(timespec="minutes"),
+        }, ensure_ascii=False), db_path)
+
+
+def get_intervention_baseline(booth_id: str, db_path: Path | str = DB_PATH) -> dict[str, Any] | None:
+    raw = get_setting(f"{INTERVENTION_BASELINE_KEY}:{booth_id}", "", db_path)
+    return json.loads(raw) if raw else None
+
+
+def simulate_student_response(db_path: Path | str = DB_PATH) -> dict[str, Any]:
+    """Let one 30-minute window elapse with the approved discount running.
+
+    The realized quantity is the demand the model itself forecast under the
+    discount, so the loop closes on the model's own prediction instead of on a
+    hand-picked number. Sales and stock are written as ordinary snapshots, which
+    is why the re-prediction afterwards is a genuine re-prediction: it reads a
+    changed world, not a flag.
+    """
+    from models.demand_model import predict_demand
+    from services.weather import get_weather
+
+    booth_id = get_setting("student_response_booth", "booth-chicken", db_path)
+    state = get_booth_state(booth_id, db_path)
+    if not int(state.get("active_discount_rate", 0)):
+        raise ValueError("학생 반응 시뮬레이션은 승인된 할인이 있어야 실행할 수 있습니다.")
+
+    now = get_demo_time(db_path)
+    prediction = predict_demand(
+        state,
+        {"now": now, "weather": get_weather(db_path), "events": get_event_context(db_path)},
+    )
+    realized = max(0, min(int(state["current_stock"]), int(prediction["predicted_sales_30m"])))
+    advanced = now + timedelta(minutes=STUDENT_RESPONSE_WINDOW_MINUTES)
+    unit_price = int(round(int(state["price"]) * (100 - int(state["active_discount_rate"])) / 100))
+    with connection(db_path) as conn:
+        conn.execute(
+            """INSERT INTO sales_snapshots(timestamp, booth_id, menu_id, sales_quantity, revenue, ticket_count)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                advanced.isoformat(), booth_id, state["menu_id"], realized, realized * unit_price,
+                max(1, round(realized / AVERAGE_PARTY_SIZE)),
+            ),
+        )
+        conn.execute(
+            """INSERT INTO inventory_snapshots(timestamp, booth_id, menu_id, current_stock, additional_stock)
+               VALUES (?, ?, ?, ?, 0)""",
+            (advanced.isoformat(), booth_id, state["menu_id"], max(0, int(state["current_stock"]) - realized)),
+        )
+    set_setting("demo_time", advanced.isoformat(), db_path)
     set_setting("student_response_simulated", "1", db_path)
+    return {
+        "booth_id": booth_id,
+        "sold": realized,
+        "discount_rate": int(state["active_discount_rate"]),
+        "from": now.isoformat(timespec="minutes"),
+        "to": advanced.isoformat(timespec="minutes"),
+    }
 
 
 def dashboard_rows(db_path: Path | str = DB_PATH) -> list[dict[str, Any]]:

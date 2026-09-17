@@ -34,7 +34,7 @@ state = db.get_booth_state(booth_id)
 prediction = db.get_latest_prediction(booth_id) or {}
 
 m1, m2, m3, m4, m5 = st.columns(5)
-m1.metric("오늘 판매", f"{state['total_sales']}개")
+m1.metric("오늘 판매", f"{state['total_sales']}개", f"최근 30분 {state['recent_tickets_30m']}팀")
 m2.metric("현재 재고", f"{state['current_stock']}개")
 m3.metric("1시간 예상 판매", f"{prediction.get('predicted_sales_60m', 0)}개")
 stockout_at = prediction.get("estimated_stockout_at")
@@ -45,10 +45,12 @@ m5.metric("종료 예상 잔여", f"{prediction.get('expected_remaining', 0)}개
 left, right = st.columns([0.82, 1.18], gap="large")
 with left:
     st.markdown("#### 원클릭 운영 입력")
-    st.caption("누적 판매량과 현재 재고를 동시에 갱신합니다.")
-    sale_cols = st.columns(3)
-    for column, quantity in zip(sale_cols, [1, 5, 10]):
-        if column.button(f"판매 +{quantity}", width="stretch", key=f"sale-{booth_id}-{quantity}"):
+    st.caption("한 번 누르면 한 팀의 주문입니다. 판매량과 재고, 주문 건수가 함께 기록됩니다.")
+    sale_cols = st.columns(4)
+    for column, quantity in zip(sale_cols, [1, 2, 3, 5]):
+        if column.button(f"{quantity}개 주문", width="stretch", key=f"sale-{booth_id}-{quantity}"):
+            # One press is one party. Recording parties separately from items is
+            # what lets the model see basket size, not just sales volume.
             db.record_sale(booth_id, quantity)
             run_workflow(booth_id)
             st.rerun()

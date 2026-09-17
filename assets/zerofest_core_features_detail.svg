@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1000" viewBox="0 0 1800 1000">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FBFCFE"/><stop offset="1" stop-color="#F1F8F6"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%"><feDropShadow dx="0" dy="7" stdDeviation="12" flood-color="#102A43" flood-opacity=".08"/></filter>
+  </defs>
+  <rect width="1800" height="1000" fill="url(#bg)"/>
+  <g font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif">
+    <text x="80" y="75" font-size="40" font-weight="700" fill="#102A43">(8-1) 핵심 기능 상세</text>
+    <text x="80" y="115" font-size="20" fill="#657A8D">사용자 행동 → AI·서비스 처리 → 검증 가능한 결과가 하나의 운영 폐루프로 이어집니다.</text>
+
+    <g font-size="15" fill="#607589">
+      <circle cx="1168" cy="78" r="7" fill="#3478F6"/><text x="1183" y="84">사용자 행동</text>
+      <circle cx="1325" cy="78" r="7" fill="#21A65A"/><text x="1340" y="84">AI·서비스 처리</text>
+      <circle cx="1525" cy="78" r="7" fill="#F47B20"/><text x="1540" y="84">결과·검증</text>
+    </g>
+
+    <!-- step cards -->
+    <g filter="url(#shadow)">
+      <rect x="80" y="185" width="300" height="405" rx="22" fill="#FFFFFF" stroke="#3478F6" stroke-width="3"/>
+      <rect x="415" y="185" width="300" height="405" rx="22" fill="#FFFFFF" stroke="#27A65A" stroke-width="3"/>
+      <rect x="750" y="185" width="300" height="405" rx="22" fill="#FFFFFF" stroke="#F47B20" stroke-width="3"/>
+      <rect x="1085" y="185" width="300" height="405" rx="22" fill="#FFFFFF" stroke="#8252F2" stroke-width="3"/>
+      <rect x="1420" y="185" width="300" height="405" rx="22" fill="#FFFFFF" stroke="#14A57F" stroke-width="3"/>
+    </g>
+
+    <g>
+      <circle cx="125" cy="230" r="23" fill="#3478F6"/><text x="125" y="238" text-anchor="middle" font-size="22" font-weight="700" fill="#FFFFFF">1</text>
+      <circle cx="460" cy="230" r="23" fill="#27A65A"/><text x="460" y="238" text-anchor="middle" font-size="22" font-weight="700" fill="#FFFFFF">2</text>
+      <circle cx="795" cy="230" r="23" fill="#F47B20"/><text x="795" y="238" text-anchor="middle" font-size="22" font-weight="700" fill="#FFFFFF">3</text>
+      <circle cx="1130" cy="230" r="23" fill="#8252F2"/><text x="1130" y="238" text-anchor="middle" font-size="22" font-weight="700" fill="#FFFFFF">4</text>
+      <circle cx="1465" cy="230" r="23" fill="#14A57F"/><text x="1465" y="238" text-anchor="middle" font-size="22" font-weight="700" fill="#FFFFFF">5</text>
+    </g>
+
+    <g font-size="24" font-weight="700" fill="#173550">
+      <text x="160" y="239">현장 판매 입력</text><text x="495" y="239">수요·잔여 예측</text><text x="830" y="239">Action 승인</text><text x="1165" y="239">학생 혜택</text><text x="1500" y="239">재예측</text>
+    </g>
+
+    <!-- repeated detailed rows -->
+    <g font-size="15" font-weight="700" fill="#6A7D90"><text x="110" y="304">사용자 행동</text><text x="445" y="304">사용자 행동</text><text x="780" y="304">사용자 행동</text><text x="1115" y="304">사용자 행동</text><text x="1450" y="304">사용자 행동</text></g>
+    <g font-size="18" fill="#223F57">
+      <text x="110" y="338">+1 · +5 · +10 판매 입력</text><text x="110" y="366">재고 ±10 조정</text>
+      <text x="445" y="338">부스 선택 또는</text><text x="445" y="366">전체 분석 실행</text>
+      <text x="780" y="338">할인·조리중단·이동</text><text x="780" y="366">후보 검토 후 승인</text>
+      <text x="1115" y="338">주변 혜택과</text><text x="1115" y="366">할인가 확인</text>
+      <text x="1450" y="338">판매 변화 또는</text><text x="1450" y="366">시뮬레이션 후 재분석</text>
+    </g>
+    <g font-size="15" font-weight="700" fill="#6A7D90"><text x="110" y="420">AI·서비스 처리</text><text x="445" y="420">AI·서비스 처리</text><text x="780" y="420">AI·서비스 처리</text><text x="1115" y="420">AI·서비스 처리</text><text x="1450" y="420">AI·서비스 처리</text></g>
+    <g font-size="18" fill="#223F57">
+      <text x="110" y="454">판매·재고를 하나의</text><text x="110" y="482">트랜잭션으로 갱신</text>
+      <text x="445" y="454">30·60분·종료 시점</text><text x="445" y="482">판매량·잔여 예측</text>
+      <text x="780" y="454">승인 ID·상태·대상</text><text x="780" y="482">부스를 검증</text>
+      <text x="1115" y="454">ACTIVE Promotion만</text><text x="1115" y="482">학생 화면에 노출</text>
+      <text x="1450" y="454">새 상태와 승인</text><text x="1450" y="482">할인율 반영</text>
+    </g>
+    <g>
+      <rect x="105" y="520" width="250" height="46" rx="12" fill="#EEF5FF"/><text x="230" y="549" text-anchor="middle" font-size="16" font-weight="700" fill="#2166D1">현재 상태 Snapshot</text>
+      <rect x="440" y="520" width="250" height="46" rx="12" fill="#EDF9F2"/><text x="565" y="549" text-anchor="middle" font-size="16" font-weight="700" fill="#238D4F">잔여 · 위험도 · 근거</text>
+      <rect x="775" y="520" width="250" height="46" rx="12" fill="#FFF5EC"/><text x="900" y="549" text-anchor="middle" font-size="16" font-weight="700" fill="#D96517">승인된 Action만 실행</text>
+      <rect x="1110" y="520" width="250" height="46" rx="12" fill="#F5F0FF"/><text x="1235" y="549" text-anchor="middle" font-size="16" font-weight="700" fill="#7047EB">가격 · 구역 · 유효시간</text>
+      <rect x="1445" y="520" width="250" height="46" rx="12" fill="#EDF9F2"/><text x="1570" y="549" text-anchor="middle" font-size="16" font-weight="700" fill="#168765">Before / After 비교</text>
+    </g>
+
+    <!-- flow arrows -->
+    <g fill="#8A9AAA">
+      <path d="M415 387L393 374L393 400Z"/><path d="M750 387L728 374L728 400Z"/><path d="M1085 387L1063 374L1063 400Z"/><path d="M1420 387L1398 374L1398 400Z"/>
+    </g>
+    <g stroke="#8A9AAA" stroke-width="3"><line x1="380" y1="387" x2="415" y2="387"/><line x1="715" y1="387" x2="750" y2="387"/><line x1="1050" y1="387" x2="1085" y2="387"/><line x1="1385" y1="387" x2="1420" y2="387"/></g>
+
+    <!-- feedback loop -->
+    <path d="M1570 590L1570 620L230 620L230 590" fill="none" stroke="#14A57F" stroke-width="4"/>
+    <path d="M230 590L219 608L241 608Z" fill="#14A57F"/>
+    <rect x="748" y="598" width="304" height="44" rx="22" fill="#E7F7F1"/>
+    <text x="900" y="626" text-anchor="middle" font-size="16" font-weight="700" fill="#168765">새 판매·재고 상태를 다음 분석에 환류</text>
+
+    <!-- AI Ops -->
+    <rect x="80" y="675" width="1640" height="126" rx="22" fill="#102A43"/>
+    <text x="115" y="718" font-size="22" font-weight="700" fill="#FFFFFF">6  AI Ops 관리</text>
+    <text x="115" y="752" font-size="16" fill="#C9D7E3">데이터 품질·모델 버전·Agent 실행·승인 감사로그·Fallback을 전 과정에서 관리</text>
+    <g font-size="15" font-weight="700" text-anchor="middle">
+      <rect x="680" y="707" width="120" height="46" rx="23" fill="#294963"/><text x="740" y="736" fill="#FFFFFF">Ingest</text>
+      <text x="818" y="736" fill="#9BB0C0">→</text><rect x="840" y="707" width="120" height="46" rx="23" fill="#294963"/><text x="900" y="736" fill="#FFFFFF">Validate</text>
+      <text x="978" y="736" fill="#9BB0C0">→</text><rect x="1000" y="707" width="120" height="46" rx="23" fill="#294963"/><text x="1060" y="736" fill="#FFFFFF">Feature</text>
+      <text x="1138" y="736" fill="#9BB0C0">→</text><rect x="1160" y="707" width="120" height="46" rx="23" fill="#294963"/><text x="1220" y="736" fill="#FFFFFF">Train</text>
+      <text x="1298" y="736" fill="#9BB0C0">→</text><rect x="1320" y="707" width="120" height="46" rx="23" fill="#294963"/><text x="1380" y="736" fill="#FFFFFF">Evaluate</text>
+      <text x="1458" y="736" fill="#9BB0C0">→</text><rect x="1480" y="707" width="120" height="46" rx="23" fill="#294963"/><text x="1540" y="736" fill="#FFFFFF">Register</text>
+    </g>
+
+    <!-- acceptance criteria -->
+    <text x="80" y="850" font-size="19" font-weight="700" fill="#102A43">핵심 수용 기준</text>
+    <g font-size="16" fill="#314C63">
+      <text x="80" y="889">✓ 승인 전 할인 미노출</text><text x="365" y="889">✓ 6,000원 → 4,800원</text><text x="650" y="889">✓ 무효·중복 승인 차단</text>
+      <text x="935" y="889">✓ 70 HIGH → 15 LOW</text><text x="1220" y="889">✓ 데이터·모델 출처 표시</text><text x="1505" y="889">✓ API 장애 Fallback</text>
+    </g>
+    <line x1="80" y1="928" x2="1720" y2="928" stroke="#D4DFE7"/>
+    <text x="80" y="963" font-size="15" fill="#6A7D90">설계 원칙: 예측은 근거와 한계를 표시하고, 가격·조리·이동은 운영자 승인 전 자동 실행하지 않습니다.</text>
+  </g>
+</svg>

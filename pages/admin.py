@@ -7,10 +7,19 @@ import streamlit as st
 
 from agents.graph import analyze_all, ensure_predictions
 from components.charts import remaining_by_booth
+from components.map import festival_map
 from components.ui import configure_page, flow_strip, page_header, sidebar
 from config import ACTION_LABELS
 from services.chat import ask_admin
-from services.database import dashboard_rows, get_weather_context, initialize_database
+from services.database import (
+    dashboard_rows,
+    get_actions,
+    get_active_promotions,
+    get_demo_time,
+    get_event_context,
+    get_weather_context,
+    initialize_database,
+)
 
 
 configure_page("학생회 Control Tower", "📊")
@@ -38,9 +47,18 @@ m4.metric("HIGH 위험 부스", f"{high_count}곳")
 
 weather = get_weather_context()
 forecast = weather["forecast_1h"]
+now = get_demo_time()
+events = get_event_context()
+if events:
+    nearest = min(events, key=lambda item: pd.Timestamp(item["end_time"]))
+    ends_at = pd.Timestamp(nearest["end_time"])
+    minutes_left = max(0, int((ends_at - pd.Timestamp(now)).total_seconds() // 60))
+    event_note = f"🎤 {nearest['event_name']} {ends_at:%H:%M} 종료 · {minutes_left}분 남음"
+else:
+    event_note = "🎤 진행 중이거나 예정된 공연 없음"
 st.info(
-    f"🌧️ **Mock Weather** · 1시간 뒤 강수확률 {int(forecast['precipitation_probability'])}% · "
-    f"예상 강수 {forecast['rainfall']}mm  |  🎤 메인 공연 20:00 종료 예정"
+    f"🌧️ **{forecast.get('provider', 'Weather')}** · 1시간 뒤 강수확률 "
+    f"{int(forecast['precipitation_probability'])}% · 예상 강수 {forecast['rainfall']}mm  |  {event_note}"
 )
 
 tab_overview, tab_agent, tab_chat = st.tabs(["전체 현황", "AI Agent", "운영 AI Chat"])
@@ -65,10 +83,19 @@ with tab_overview:
             "판매": st.column_config.NumberColumn(format="%d개"),
             "재고": st.column_config.NumberColumn(format="%d개"),
             "30분 예측": st.column_config.NumberColumn(format="%d개"),
-            "예상 잔여": st.column_config.ProgressColumn(min_value=0, max_value=180, format="%d개"),
+            "예상 잔여": st.column_config.ProgressColumn(
+                min_value=0, max_value=max(1, max(int(r["예상 잔여"]) for r in table_rows)), format="%d개"
+            ),
         },
     )
     st.plotly_chart(remaining_by_booth(rows), width="stretch", config={"displayModeBar": False})
+    st.markdown("##### 구역별 위험 분포")
+    festival_map(
+        rows,
+        get_active_promotions(),
+        stage_name=next((item["event_name"] for item in events if item["zone"] == "Main Stage"), None),
+        admin=True,
+    )
     if st.button("모든 부스 지금 재예측", type="primary"):
         with st.spinner("판매·재고·날씨·공연 데이터를 분석하는 중..."):
             analyze_all()
@@ -92,12 +119,22 @@ with tab_agent:
         for driver in focus.get("drivers", []):
             st.markdown(f"- {driver}")
         st.markdown("#### 추천 Action")
-        if focus.get("risk_level") == "HIGH":
-            st.markdown("1. 추가 조리 중단\n2. B구역 재고 이동 검토\n3. 운영자 승인 후 20% 할인\n4. 학생 프로모션 노출")
-        elif focus.get("risk_level") == "MEDIUM":
-            st.markdown("1. 추가 조리 보류\n2. 15분 후 판매 추이 재확인")
+        # Show what the agent actually queued for this booth. A fixed list here
+        # would claim to be an AI recommendation while being a script.
+        queued = get_actions(focus["booth_id"], "PENDING")
+        executed = [item for item in get_actions(focus["booth_id"]) if item["status"] == "EXECUTED"]
+        if queued:
+            for index, action in enumerate(queued, start=1):
+                st.markdown(f"{index}. **{ACTION_LABELS.get(action['action_type'], action['action_type'])}**")
+                st.caption(action["reason"])
+            st.caption(f"{len(queued)}건이 운영자 승인을 기다리고 있습니다.")
+        elif executed:
+            st.success(
+                "승인된 Action이 반영되어 추가 제안이 없습니다. "
+                f"최근 실행: {ACTION_LABELS.get(executed[0]['action_type'], executed[0]['action_type'])}"
+            )
         else:
-            st.success("개입 후 폐기위험이 LOW로 안정화되었습니다. 현재 운영을 유지합니다.")
+            st.success("현재 폐기위험이 낮아 Agent가 제안한 Action이 없습니다.")
         st.caption("LLM은 설명만 담당하며 판매량 예측·위험판정·실행 승인에는 관여하지 않습니다.")
         st.page_link("pages/operator.py", label="운영자 승인 화면으로 →", icon="🧑‍🍳")
 

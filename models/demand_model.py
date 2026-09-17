@@ -1,4 +1,4 @@
-"""Historical festival demand model with a deterministic demo anchor."""
+"""Festival demand model. Every number the UI shows comes from this model."""
 
 from __future__ import annotations
 
@@ -9,50 +9,81 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from config import DEMO_MODE, HISTORICAL_DATA_PATH
+from config import HISTORICAL_DATA_PATH
 
 
+# Time is represented once, by minutes_to_close. hour, minute_of_day,
+# seconds_to_close and minutes_to_festival_end were exact or near-exact
+# restatements of it (|r| up to 1.000) and are deliberately absent.
 FEATURES = [
     "recent_sales_30m",
     "previous_sales_30m",
-    "festival_day",
-    "hour",
-    "minute_of_day",
-    "second_of_minute",
+    "recent_tickets_30m",
+    "current_stock",
+    "initial_stock",
     "minutes_to_close",
-    "seconds_to_close",
-    "minutes_to_festival_end",
+    "festival_day",
+    "is_weekend",
+    "event_ending_soon",
     "precipitation_probability",
     "temperature",
-    "event_ending_soon",
     "discount_rate",
+    "new_discount_rate",
     "category_code",
-    "price_k",
     "campus_scale",
 ]
+# One definition of the estimator, shared by inference, the MLOps pipeline and
+# the training script, so a hyperparameter can never drift between them.
+MODEL_PARAMS = {
+    "random_state": 42,
+    "n_estimators": 120,
+    "max_depth": 4,
+    "learning_rate": 0.045,
+    "loss": "huber",
+}
+# A discount younger than one observation window is not yet reflected in
+# recent_sales_30m. Separating it from the running rate is what lets the model
+# answer "what happens if I discount now" instead of only "what is happening".
+NEW_DISCOUNT_MAX_AGE_MINUTES = 30
 CATEGORY_CODES = {"food": 0, "drink": 1, "dessert": 2}
+# Campus size enters the model as a population ratio against a reference campus,
+# so training and inference compute it from student_count the same way.
+REFERENCE_STUDENT_COUNT = 15000
+
+
+def campus_scale(student_count: Any) -> float:
+    return round(float(student_count) / REFERENCE_STUDENT_COUNT, 4)
+
+# Rows whose 30-minute target window was truncated by a stockout. Zero sales
+# there means "nothing left to sell", not "nobody wanted it", so they are
+# dropped from training rather than taught to the model as zero demand.
+CENSORED_FLAG_COLUMN = "censored_window_flag"
 HISTORICAL_REQUIRED_COLUMNS = {
     "festival_year",
     "university_id",
     "student_count",
+    "campus_scale",
     "menu_category",
     "price",
     "observation_timestamp",
     "target_window_end",
     "festival_day",
-    "hour",
-    "minute_of_day",
-    "second_of_minute",
+    "day_of_week",
+    "is_weekend",
     "minutes_to_close",
-    "seconds_to_close",
-    "minutes_to_festival_end",
     "recent_sales_30m",
     "previous_sales_30m",
+    "recent_tickets_30m",
+    "current_stock",
+    "initial_stock",
+    "stockout_flag",
     "precipitation_probability",
     "temperature",
     "event_ending_soon",
     "discount_rate",
+    "discount_elapsed_minutes",
     "future_sales_30m",
+    CENSORED_FLAG_COLUMN,
 }
 
 
@@ -61,23 +92,23 @@ def _synthetic_training_frame(seed: int = 42, rows: int = 640) -> tuple[pd.DataF
     rng = np.random.default_rng(seed)
     recent = rng.integers(4, 55, rows)
     previous = np.maximum(1, recent + rng.integers(-14, 15, rows))
+    recent_tickets = np.maximum(1, (recent / rng.uniform(1.8, 2.8, rows)).round().astype(int))
     festival_day = rng.integers(1, 4, rows)
-    hour = rng.integers(16, 22, rows)
-    minute_of_day = hour * 60 + rng.choice([0, 30], rows)
-    second_of_minute = rng.integers(0, 60, rows)
     minutes = rng.integers(30, 361, rows)
-    seconds_to_close = minutes * 60 - second_of_minute
-    minutes_to_festival_end = minutes + (3 - festival_day) * 360
+    initial_stock = rng.integers(90, 320, rows)
+    current_stock = np.maximum(1, initial_stock - rng.integers(0, 260, rows))
+    is_weekend = rng.integers(0, 2, rows)
     rain = rng.integers(0, 101, rows)
     temperature = rng.integers(16, 31, rows)
     event_end = rng.integers(0, 2, rows)
     discount = rng.choice([0, 0, 0, 10, 20, 30], rows)
+    discount_elapsed = np.where(discount > 0, rng.choice([0, 30, 60, 90], rows), 0)
     category = rng.integers(0, 3, rows)
 
     trend = (recent - previous) * 0.28
     rain_factor = np.where(category == 1, -0.05, -0.13) * rain
-    event_factor = event_end * -3.8
-    discount_factor = recent * (discount / 100) * 1.35
+    event_factor = event_end * 3.8
+    discount_factor = recent * (discount / 100) * 1.35 * np.where(discount_elapsed == 0, 1.0, 0.4)
     category_factor = np.choose(category, [1.0, 1.12, 0.84])
     target = (recent + trend + rain_factor + event_factor + discount_factor) * category_factor
     target += rng.normal(0, 2.2, rows)
@@ -87,20 +118,19 @@ def _synthetic_training_frame(seed: int = 42, rows: int = 640) -> tuple[pd.DataF
         {
             "recent_sales_30m": recent,
             "previous_sales_30m": previous,
-            "festival_day": festival_day,
-            "hour": hour,
-            "minute_of_day": minute_of_day,
-            "second_of_minute": second_of_minute,
+            "recent_tickets_30m": recent_tickets,
+            "current_stock": current_stock,
+            "initial_stock": initial_stock,
             "minutes_to_close": minutes,
-            "seconds_to_close": seconds_to_close,
-            "minutes_to_festival_end": minutes_to_festival_end,
+            "festival_day": festival_day,
+            "is_weekend": is_weekend,
+            "event_ending_soon": event_end,
             "precipitation_probability": rain,
             "temperature": temperature,
-            "event_ending_soon": event_end,
             "discount_rate": discount,
+            "new_discount_rate": np.where(discount_elapsed == 0, discount, 0),
             "category_code": category,
-            "price_k": rng.choice([3.0, 4.0, 5.0, 6.0], rows),
-            "campus_scale": rng.choice([0.9, 1.5, 2.2], rows),
+            "campus_scale": rng.choice([0.82, 1.0, 1.14], rows),
         }
     )
     return frame, pd.Series(target, name="future_sales_30m")
@@ -120,8 +150,22 @@ def load_historical_data() -> pd.DataFrame:
     result = frame.copy()
     result["category_code"] = result["menu_category"].map(CATEGORY_CODES).fillna(0).astype(int)
     result["price_k"] = result["price"].astype(float) / 1000
-    result["campus_scale"] = result["student_count"].astype(float) / 10000
+    result["new_discount_rate"] = result["discount_rate"].where(
+        result["discount_elapsed_minutes"] < NEW_DISCOUNT_MAX_AGE_MINUTES, 0
+    ).astype(int)
     return result
+
+
+def uncensored(history: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows whose target window was truncated by a stockout.
+
+    Sales are censored demand: once stock hits zero the observed quantity stops
+    tracking what students wanted. Training on those zeros teaches the model to
+    predict no demand exactly when a booth has already sold out.
+    """
+    if CENSORED_FLAG_COLUMN not in history.columns:
+        return history
+    return history[history[CENSORED_FLAG_COLUMN] == 0]
 
 
 def training_data() -> tuple[pd.DataFrame, pd.Series, str]:
@@ -131,7 +175,8 @@ def training_data() -> tuple[pd.DataFrame, pd.Series, str]:
         label = f"{years[0]}–{years[-1]} Historical Festival Data"
         if "data_class" in history and history["data_class"].astype(str).str.contains("SYNTHETIC").any():
             label += " (Sample / Synthetic)"
-        return history[FEATURES], history["future_sales_30m"], label
+        usable = uncensored(history)
+        return usable[FEATURES], usable["future_sales_30m"], label
     except Exception:
         features, target = _synthetic_training_frame()
         return features, target, "Generated Synthetic Fallback"
@@ -160,9 +205,7 @@ def _trained_model() -> Any:
     from sklearn.ensemble import GradientBoostingRegressor
 
     features, target, _ = training_data()
-    model = GradientBoostingRegressor(
-        random_state=42, n_estimators=120, max_depth=3, learning_rate=0.045, loss="huber"
-    )
+    model = GradientBoostingRegressor(**MODEL_PARAMS)
     model.fit(features[FEATURES], target)
     return model
 
@@ -179,14 +222,26 @@ def _festival_timing_features(state: dict[str, Any], now: Any) -> dict[str, int]
     end_hour, end_minute = map(int, str(state.get("festival_end_time", "22:00")).split(":"))
     daily_minutes = max(30, (end_hour * 60 + end_minute) - (start_hour * 60 + start_minute))
     close = now.replace(hour=end_hour, minute=end_minute, second=0, microsecond=0)
-    seconds_to_close = max(1800, int((close - now).total_seconds()))
-    minutes_to_close = max(30, seconds_to_close // 60)
+    minutes_to_close = max(30, int((close - now).total_seconds()) // 60)
     return {
         "festival_day": festival_day,
         "minutes_to_close": minutes_to_close,
-        "seconds_to_close": seconds_to_close,
-        "minutes_to_festival_end": max(30, (total_days - festival_day) * daily_minutes + minutes_to_close),
+        "daily_minutes": daily_minutes,
     }
+
+
+def _discount_elapsed_minutes(state: dict[str, Any], now: Any) -> int:
+    """Minutes an approved discount has been live, 0 when none is running."""
+    if not int(state.get("active_discount_rate", 0)):
+        return 0
+    started_at = state.get("discount_started_at")
+    if not started_at:
+        return 0
+    try:
+        elapsed = (now - pd.Timestamp(started_at).to_pydatetime()).total_seconds() // 60
+    except (TypeError, ValueError):
+        return 0
+    return int(max(0, elapsed))
 
 
 def _feature_row(state: dict[str, Any], context: dict[str, Any]) -> pd.DataFrame:
@@ -194,6 +249,7 @@ def _feature_row(state: dict[str, Any], context: dict[str, Any]) -> pd.DataFrame
     timing = _festival_timing_features(state, now)
     forecast = context.get("weather", {}).get("forecast_1h", {})
     events = context.get("events", [])
+    discount_rate = int(state.get("active_discount_rate", 0))
     ending_soon = any(
         0 <= (pd.Timestamp(event["end_time"]).to_pydatetime() - now).total_seconds() <= 3600
         for event in events
@@ -203,20 +259,23 @@ def _feature_row(state: dict[str, Any], context: dict[str, Any]) -> pd.DataFrame
             {
                 "recent_sales_30m": state["recent_sales_30m"],
                 "previous_sales_30m": state["previous_sales_30m"],
-                "festival_day": timing["festival_day"],
-                "hour": now.hour,
-                "minute_of_day": now.hour * 60 + now.minute,
-                "second_of_minute": now.second,
+                "recent_tickets_30m": int(state.get("recent_tickets_30m", 0)),
+                "current_stock": int(state["current_stock"]),
+                "initial_stock": int(state.get("initial_stock", state["current_stock"])),
                 "minutes_to_close": timing["minutes_to_close"],
-                "seconds_to_close": timing["seconds_to_close"],
-                "minutes_to_festival_end": timing["minutes_to_festival_end"],
+                "festival_day": timing["festival_day"],
+                "is_weekend": int(now.weekday() >= 5),
+                "event_ending_soon": int(ending_soon),
                 "precipitation_probability": float(forecast.get("precipitation_probability", 0)),
                 "temperature": float(forecast.get("temperature", 20)),
-                "event_ending_soon": int(ending_soon),
-                "discount_rate": int(state.get("active_discount_rate", 0)),
+                "discount_rate": discount_rate,
+                "new_discount_rate": (
+                    discount_rate
+                    if _discount_elapsed_minutes(state, now) < NEW_DISCOUNT_MAX_AGE_MINUTES
+                    else 0
+                ),
                 "category_code": CATEGORY_CODES.get(state.get("category", "food"), 0),
-                "price_k": int(state.get("price", 0)) / 1000,
-                "campus_scale": int(state.get("student_count", 10000)) / 10000,
+                "campus_scale": campus_scale(state.get("student_count", REFERENCE_STUDENT_COUNT)),
             }
         ]
     )
@@ -242,16 +301,6 @@ def predict_demand(state: dict[str, Any], context: dict[str, Any]) -> dict[str, 
     next_60 = int(round(next_30 * 1.86))
     until_close = int(round(next_30 * (minutes_to_close / 30) * 0.82))
 
-    # The fixed seed scenario is calibrated for a reliable 3–5 minute presentation.
-    # It is visibly marked as a simulation everywhere and is not claimed as evidence.
-    if DEMO_MODE and state["booth_id"] == "booth-chicken":
-        if state.get("student_response_simulated") and state.get("active_discount_rate", 0) >= 20:
-            next_30, next_60, until_close = 34, 67, 165
-            model_source += " + Demo Simulation intervention calibration"
-        else:
-            next_30, next_60, until_close = 16, 33, 110
-            model_source += " + Demo Simulation baseline calibration"
-
     current_stock = int(state["current_stock"])
     until_close = min(current_stock, max(0, until_close))
     expected_remaining = max(0, current_stock - until_close)
@@ -269,7 +318,7 @@ def predict_demand(state: dict[str, Any], context: dict[str, Any]) -> dict[str, 
     )
     drivers = [
         f"최근 30분 판매 {state['recent_sales_30m']}개 ({trend_pct:+d}%)",
-        f"축제 {int(feature['festival_day'])}일 차 · 전체 종료까지 {int(feature['minutes_to_festival_end'])}분",
+        f"축제 {int(feature['festival_day'])}일 차 · 당일 종료까지 {int(feature['minutes_to_close'])}분",
         f"1시간 뒤 강수확률 {rain}%",
         "메인 공연 종료가 1시간 이내" if feature["event_ending_soon"] else "공연 종료 영향 낮음",
     ]

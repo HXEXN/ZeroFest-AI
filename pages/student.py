@@ -46,8 +46,10 @@ else:
             )
 
 st.markdown("### 축제 지도")
-festival_map(chicken_discount=any(item["booth_id"] == "booth-chicken" for item in promotions))
-st.caption("위치는 Demo용 가상 구역입니다. 정밀 위치나 개인정보를 수집하지 않습니다.")
+events = db.get_event_context()
+stage = next((item["event_name"] for item in events if item["zone"] == "Main Stage"), None)
+festival_map(db.dashboard_rows(), promotions, stage_name=stage)
+st.caption("구역과 혜택 표시는 실제 부스 상태에서 계산합니다. 정밀 위치나 개인정보는 수집하지 않습니다.")
 
 tab_quiz, tab_stamp = st.tabs(["Quiz 보상 · P1", "Stamp Tour · P2"])
 with tab_quiz:

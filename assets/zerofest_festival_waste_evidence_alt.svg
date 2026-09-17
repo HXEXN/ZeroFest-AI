@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FAFCFB"/><stop offset="1" stop-color="#EFF8F5"/></linearGradient>
+    <linearGradient id="teal2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#087B70"/><stop offset="1" stop-color="#26B89E"/></linearGradient>
+    <linearGradient id="lime2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#5AAE16"/><stop offset="1" stop-color="#9CDD2B"/></linearGradient>
+    <filter id="shadow2" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="9" stdDeviation="18" flood-color="#082A50" flood-opacity=".08"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg2)"/>
+  <text x="80" y="85" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="42" font-weight="700" fill="#082A50">참여자는 체감했고, 폐기물은 실제 증가했다</text>
+  <text x="80" y="126" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="20" fill="#617789">대학 축제 인식조사 × 식음료 소비 집중 축제의 보조 사례</text>
+
+  <g filter="url(#shadow2)"><rect x="80" y="175" width="690" height="550" rx="26" fill="#FFFFFF"/></g>
+  <text x="125" y="232" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="27" font-weight="700" fill="#082A50">대학 축제 참여자 인식</text>
+  <text x="125" y="268" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="17" fill="#708493">녹색연합 조사 · 2024년</text>
+
+  <circle cx="305" cy="445" r="112" fill="none" stroke="#E1ECE8" stroke-width="34"/>
+  <circle cx="305" cy="445" r="112" fill="none" stroke="url(#teal2)" stroke-width="34" stroke-linecap="round" stroke-dasharray="562.97 703.72" transform="rotate(-90 305 445)"/>
+  <text x="305" y="454" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#087B70">80%</text>
+  <text x="305" y="602" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="21" font-weight="700" fill="#233F57">쓰레기 문제를 심각하게 인식</text>
+  <text x="305" y="634" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="17" fill="#607685">10명 중 8명</text>
+
+  <circle cx="585" cy="445" r="112" fill="none" stroke="#E1ECE8" stroke-width="34"/>
+  <circle cx="585" cy="445" r="112" fill="none" stroke="url(#lime2)" stroke-width="34" stroke-linecap="round" stroke-dasharray="647.42 703.72" transform="rotate(-90 585 445)"/>
+  <text x="585" y="454" text-anchor="middle" font-family="Arial, sans-serif" font-size="54" font-weight="700" fill="#5AAE16">92%</text>
+  <text x="585" y="602" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="21" font-weight="700" fill="#233F57">일회용기 사용 경험</text>
+  <text x="585" y="634" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="17" fill="#607685">음식 구매 시</text>
+  <text x="125" y="687" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="15" fill="#738695">출처: 녹색연합, 대학 축제 참여자 조사(2024)</text>
+
+  <g filter="url(#shadow2)"><rect x="830" y="175" width="690" height="550" rx="26" fill="#FFFFFF"/></g>
+  <text x="875" y="232" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="27" font-weight="700" fill="#082A50">축제 기간 폐기물 변화</text>
+  <text x="875" y="268" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="17" fill="#708493">평시 100 기준 · 광주 충장축제 2025년</text>
+
+  <text x="875" y="350" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="21" font-weight="700" fill="#233F57">전체 폐기물</text>
+  <line x1="1010" y1="402" x2="1420" y2="402" stroke="#D8E4E1" stroke-width="12" stroke-linecap="round"/>
+  <line x1="1050" y1="402" x2="1350" y2="402" stroke="#139A87" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="1050" cy="402" r="16" fill="#AAB9C0"/>
+  <circle cx="1350" cy="402" r="20" fill="#139A87"/>
+  <text x="1050" y="374" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" fill="#607685">100</text>
+  <text x="1350" y="369" text-anchor="middle" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#087B70">117.21</text>
+  <rect x="1194" y="434" width="286" height="48" rx="24" fill="#E9F6F2"/>
+  <text x="1337" y="465" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="19" font-weight="700" fill="#087B70">+17.21% · 약 102.9톤</text>
+
+  <text x="875" y="538" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="21" font-weight="700" fill="#233F57">음식물 폐기물</text>
+  <line x1="1010" y1="590" x2="1420" y2="590" stroke="#D8E4E1" stroke-width="12" stroke-linecap="round"/>
+  <line x1="1050" y1="590" x2="1400" y2="590" stroke="#76C918" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="1050" cy="590" r="16" fill="#AAB9C0"/>
+  <circle cx="1400" cy="590" r="20" fill="#76C918"/>
+  <text x="1050" y="562" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" fill="#607685">100</text>
+  <text x="1400" y="557" text-anchor="middle" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#5AAE16">119.82</text>
+  <rect x="1260" y="622" width="220" height="48" rx="24" fill="#F1F8E8"/>
+  <text x="1370" y="653" text-anchor="middle" font-family="Arial, sans-serif" font-size="21" font-weight="700" fill="#5AAE16">+19.82%</text>
+  <text x="875" y="687" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="15" fill="#738695">출처: 광주 충장축제 폐기물 집계(2025)</text>
+
+  <rect x="80" y="772" width="1440" height="82" rx="20" fill="#082A50"/>
+  <text x="800" y="808" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="18" font-weight="700" fill="#FFFFFF">직접 조사와 보조 사례를 분리해 해석</text>
+  <text x="800" y="834" text-anchor="middle" font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" font-size="15" fill="#D6E4EC">충장축제 수치는 대학 축제의 직접 폐기량 통계가 아니라 식음료 소비 집중 환경을 보여주는 사례입니다.</text>
+</svg>

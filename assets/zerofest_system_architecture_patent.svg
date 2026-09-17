@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1050" viewBox="0 0 1800 1050">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#111111"/></marker>
+    <marker id="open-arrow" markerWidth="11" markerHeight="11" refX="10" refY="5.5" orient="auto"><path d="M1 1L10 5.5L1 10" fill="none" stroke="#111111" stroke-width="1.5"/></marker>
+  </defs>
+  <rect width="1800" height="1050" fill="#FFFFFF"/>
+  <g font-family="Apple SD Gothic Neo, Noto Sans KR, sans-serif" fill="#111111">
+    <text x="80" y="72" font-size="32" font-weight="700">도 1</text>
+    <text x="900" y="72" text-anchor="middle" font-size="30" font-weight="700">인공지능 기반 축제 식음료 재고 운영 시스템 구성도</text>
+
+    <!-- external terminals -->
+    <rect x="45" y="380" width="220" height="120" fill="#FFFFFF" stroke="#111111" stroke-width="2.5"/>
+    <text x="155" y="427" text-anchor="middle" font-size="22" font-weight="700">부스 운영자 단말</text>
+    <text x="155" y="462" text-anchor="middle" font-size="18">판매·재고 입력 / 승인</text>
+    <text x="155" y="490" text-anchor="middle" font-size="17">(110)</text>
+
+    <rect x="45" y="710" width="220" height="120" fill="#FFFFFF" stroke="#111111" stroke-width="2.5"/>
+    <text x="155" y="757" text-anchor="middle" font-size="22" font-weight="700">학생회 단말</text>
+    <text x="155" y="792" text-anchor="middle" font-size="18">통합 대시보드</text>
+    <text x="155" y="820" text-anchor="middle" font-size="17">(200)</text>
+
+    <!-- system boundary -->
+    <rect x="315" y="125" width="1435" height="750" fill="none" stroke="#111111" stroke-width="2.5" stroke-dasharray="12 9"/>
+    <rect x="345" y="103" width="330" height="45" fill="#FFFFFF"/>
+    <text x="365" y="136" font-size="24" font-weight="700">ZeroFest AI 운영 서버 (100)</text>
+
+    <!-- source stores -->
+    <g stroke="#111111" stroke-width="2.2" fill="#FFFFFF">
+      <path d="M365 190c0-13 42-24 95-24s95 11 95 24v78c0 13-42 24-95 24s-95-11-95-24z"/>
+      <ellipse cx="460" cy="190" rx="95" ry="24"/>
+      <path d="M365 228c0 13 42 24 95 24s95-11 95-24" fill="none"/>
+      <rect x="635" y="166" width="190" height="126"/>
+      <rect x="905" y="166" width="210" height="126"/>
+    </g>
+    <g text-anchor="middle">
+      <text x="460" y="216" font-size="19" font-weight="700">판매·재고 데이터</text><text x="460" y="243" font-size="17">저장부 (310)</text>
+      <text x="730" y="211" font-size="19" font-weight="700">날씨 데이터</text><text x="730" y="240" font-size="17">수집부 (320)</text><text x="730" y="268" font-size="15">외부 API</text>
+      <text x="1010" y="211" font-size="19" font-weight="700">공연·시간대 데이터</text><text x="1010" y="240" font-size="17">수집부 (330)</text><text x="1010" y="268" font-size="15">일정·운영 시각</text>
+    </g>
+
+    <!-- main processing row -->
+    <g stroke="#111111" stroke-width="2.5" fill="#FFFFFF">
+      <rect x="355" y="355" width="220" height="150"/>
+      <rect x="615" y="355" width="220" height="150"/>
+      <rect x="875" y="355" width="220" height="150"/>
+      <rect x="1135" y="355" width="220" height="150"/>
+      <rect x="1395" y="355" width="300" height="150"/>
+    </g>
+    <g text-anchor="middle">
+      <text x="465" y="400" font-size="21" font-weight="700">데이터 처리부</text><text x="465" y="434" font-size="18">Python / Pandas</text><text x="465" y="466" font-size="17">정제·검증·집계</text><text x="465" y="494" font-size="16">(120)</text>
+      <text x="725" y="400" font-size="21" font-weight="700">데이터 결합부</text><text x="725" y="434" font-size="17">판매·재고·시간대</text><text x="725" y="462" font-size="17">날씨·공연 일정</text><text x="725" y="494" font-size="16">(130)</text>
+      <text x="985" y="400" font-size="21" font-weight="700">수요예측부</text><text x="985" y="434" font-size="17">향후 판매량 및</text><text x="985" y="462" font-size="17">예상 잔여재고 예측</text><text x="985" y="494" font-size="16">(140)</text>
+      <text x="1245" y="400" font-size="21" font-weight="700">폐기위험 판단부</text><text x="1245" y="438" font-size="18">LOW · MEDIUM</text><text x="1245" y="466" font-size="18">· HIGH</text><text x="1245" y="494" font-size="16">(150)</text>
+      <text x="1545" y="395" font-size="21" font-weight="700">운영 Action 추천부</text><text x="1545" y="430" font-size="18">LangGraph Agent</text><text x="1545" y="461" font-size="16">할인·조리중단·재고이동</text><text x="1545" y="494" font-size="16">(160)</text>
+    </g>
+
+    <!-- main arrows -->
+    <g fill="none" stroke="#111111" stroke-width="2.5" marker-end="url(#arrow)">
+      <line x1="265" y1="440" x2="355" y2="440"/>
+      <line x1="575" y1="430" x2="615" y2="430"/>
+      <line x1="835" y1="430" x2="875" y2="430"/>
+      <line x1="1095" y1="430" x2="1135" y2="430"/>
+      <line x1="1355" y1="430" x2="1395" y2="430"/>
+      <path d="M1545 505V595"/>
+      <line x1="1395" y1="665" x2="1355" y2="665"/>
+      <line x1="1135" y1="665" x2="1095" y2="665"/>
+    </g>
+    <g fill="#111111">
+      <path d="M355 440L340 431L340 449Z"/>
+      <path d="M615 430L600 421L600 439Z"/>
+      <path d="M875 430L860 421L860 439Z"/>
+      <path d="M1135 430L1120 421L1120 439Z"/>
+      <path d="M1395 430L1380 421L1380 439Z"/>
+      <path d="M1545 595L1536 580L1554 580Z"/>
+      <path d="M1355 665L1370 656L1370 674Z"/>
+      <path d="M1095 665L1110 656L1110 674Z"/>
+    </g>
+
+    <!-- data source arrows -->
+    <g fill="none" stroke="#111111" stroke-width="2" marker-end="url(#open-arrow)">
+      <path d="M460 292V325H465V355"/>
+      <path d="M730 292V330H725V355"/>
+      <path d="M1010 292V315H760V355"/>
+    </g>
+    <g fill="#111111"><path d="M465 355L456 340L474 340Z"/><path d="M725 355L716 340L734 340Z"/><path d="M760 355L751 340L769 340Z"/></g>
+
+    <!-- decision and execution row -->
+    <g stroke="#111111" stroke-width="2.5" fill="#FFFFFF">
+      <rect x="1395" y="595" width="300" height="140"/>
+      <rect x="1135" y="595" width="220" height="140"/>
+      <rect x="875" y="595" width="220" height="140"/>
+    </g>
+    <g text-anchor="middle">
+      <text x="1545" y="638" font-size="21" font-weight="700">운영자 확인·승인부</text><text x="1545" y="675" font-size="17">추천 내용·근거 확인</text><text x="1545" y="704" font-size="17">실행 또는 거절 (170)</text>
+      <text x="1245" y="638" font-size="21" font-weight="700">Action 실행부</text><text x="1245" y="675" font-size="17">승인된 Action만 실행</text><text x="1245" y="704" font-size="17">(180)</text>
+      <text x="985" y="638" font-size="21" font-weight="700">재예측부</text><text x="985" y="675" font-size="17">변경된 판매·재고 반영</text><text x="985" y="704" font-size="17">잔여·위험 갱신 (190)</text>
+    </g>
+
+    <!-- human approval interaction -->
+    <path d="M1395 630H1315V535H290V480H265" fill="none" stroke="#111111" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#open-arrow)"/>
+    <path d="M265 480L280 471L280 489Z" fill="#111111"/>
+    <text x="520" y="557" font-size="15" fill="#333333">추천·근거 표시 / 승인 결과 수신</text>
+
+    <!-- feedback to prediction -->
+    <path d="M985 595V545H945V505" fill="none" stroke="#111111" stroke-width="2.5" stroke-dasharray="10 7" marker-end="url(#arrow)"/>
+    <path d="M945 505L936 520L954 520Z" fill="#111111"/>
+    <text x="990" y="565" font-size="15" fill="#333333">재예측</text>
+
+    <!-- action updates state store -->
+    <path d="M1245 735V790H460V292" fill="none" stroke="#111111" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#open-arrow)"/>
+    <path d="M460 292L451 307L469 307Z" fill="#111111"/>
+    <text x="800" y="814" font-size="15">실행 결과 및 변경 판매·재고 저장</text>
+
+    <!-- dashboard output bus -->
+    <path d="M875 680H700V770H265" fill="none" stroke="#111111" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <path d="M265 770L280 761L280 779Z" fill="#111111"/>
+    <text x="470" y="757" font-size="15">전체 부스 예측·위험·Action 현황</text>
+
+    <!-- explanatory legend -->
+    <line x1="355" y1="842" x2="465" y2="842" stroke="#111111" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <text x="485" y="848" font-size="16">주 처리 흐름</text>
+    <line x1="660" y1="842" x2="770" y2="842" stroke="#111111" stroke-width="2.5" stroke-dasharray="10 7" marker-end="url(#arrow)"/>
+    <text x="790" y="848" font-size="16">승인·재예측·상태 갱신 흐름</text>
+    <text x="1135" y="848" font-size="16" font-weight="700">※ 운영자 승인 전 Action 자동 실행 없음</text>
+
+    <line x1="80" y1="920" x2="1720" y2="920" stroke="#111111" stroke-width="1.5"/>
+    <text x="900" y="970" text-anchor="middle" font-size="24" font-weight="700">도 1. ZeroFest AI의 시스템 구성도</text>
+    <text x="900" y="1007" text-anchor="middle" font-size="16">부호의 설명: 100 운영 서버, 110 운영자 단말, 120 데이터 처리부, 130 데이터 결합부, 140 수요예측부, 150 폐기위험 판단부, 160 Action 추천부, 170 승인부, 180 실행부, 190 재예측부, 200 학생회 단말</text>
+  </g>
+</svg>
