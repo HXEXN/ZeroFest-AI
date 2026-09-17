@@ -122,6 +122,36 @@ ACTION_RULES = [
      "TRANSFER는 B구역 최근 수요가 이 부스보다 높을 때만 추가"),
 ]
 
+# One row per model feature: what it means, where the training value comes from
+# in the simulation, and where the serving value comes from at inference. The
+# two sources must agree or the model sees a different world in production.
+FEATURE_SPEC = [
+    ("recent_sales_30m", "직전 30분 판매 수량", "스냅샷 시각까지의 분당 판매 합", "sales_snapshots 30분 윈도우 SUM"),
+    ("previous_sales_30m", "그 이전 30분 판매 수량", "-60분 ~ -30분 구간 합", "동일 쿼리의 이전 윈도우"),
+    ("recent_tickets_30m", "직전 30분 주문 건수", "방문 팀 수의 30분 합", "ticket_count 30분 윈도우 SUM"),
+    ("current_stock", "현재 남은 재고", "초기 재고 - 누적 판매", "inventory_snapshots 최신 행"),
+    ("initial_stock", "그날 준비한 재고", "기대수요 x 준비율", "menus.initial_stock"),
+    ("minutes_to_close", "당일 종료까지 남은 분", "359 - 경과 분", "축제 종료 시각 - demo_time"),
+    ("festival_day", "축제 일차 (1~3)", "시뮬레이션 일차", "축제 시작일로부터 경과일"),
+    ("is_weekend", "주말 여부", "해당 연도 실제 요일", "demo_time.weekday() >= 5"),
+    ("event_ending_soon", "메인 공연 종료 60분 이내", "경과 180~239분", "festival_events 종료까지 1시간 이내"),
+    ("precipitation_probability", "강수확률 (0~100)", "rain_mm x 25, 100 상한", "날씨 어댑터 forecast_1h"),
+    ("temperature", "기온 (섭씨)", "일자별 기준 기온 + AR(1)", "날씨 어댑터 forecast_1h"),
+    ("discount_rate", "적용 중인 할인율", "블록 무작위 배정값", "promotions 활성 행"),
+    ("new_discount_rate", "승인 30분 이내 할인율", "discount_elapsed < 30이면 할인율", "승인 시각 경과 30분 미만"),
+    ("category_code", "메뉴 유형 (food0/drink1/dessert2)", "menu_category 매핑", "menus.category 매핑"),
+    ("campus_scale", "캠퍼스 규모 비율", "학생수 / 15,000", "동일 공식"),
+]
+
+SAMPLE_ROW = [
+    ("맥락", "2023-zero-univ · B01-M02(drink) · 축제 1일차 · 2023-05-20 19:00"),
+    ("판매 추세", "최근 30분 17개 / 10팀 · 이전 30분 17개"),
+    ("재고", "준비 211개 · 현재 138개 · 종료까지 179분"),
+    ("환경", "주말 · 공연 종료 임박 · 강수확률 0% · 기온 18.7도"),
+    ("개입", "할인 20% · 승인 직후(new_discount_rate 20)"),
+    ("타깃", "future_sales_30m = 12  (잠재 수요도 12 · 검열되지 않음)"),
+]
+
 LAYERS = [
     ("ML 예측", "30분·1시간·종료 시점 판매량", "LLM이 수치를 만들지 않음"),
     ("규칙 엔진", "잔여비율로 LOW/MEDIUM/HIGH", ".env 임계값 · 결정론적"),
@@ -454,7 +484,49 @@ def build_pages(m: dict, study: dict, font_set: dict) -> list[Path]:
     page.note("임계값 0.10 / 0.30은 .env의 RISK_LOW_THRESHOLD · RISK_HIGH_THRESHOLD로 조정할 수 있다.")
     pages.append(page.save(OUTPUT_DIR / "master_page_11.png"))
 
-    # --- P12 limits ----------------------------------------------------------
+    # --- P12 dataset specification -------------------------------------------
+    page = Page(font_set)
+    page.title("부록 D. 학습 데이터셋 명세", "40열이 각각 무슨 역할을 하는가")
+    page.heading("D.1 열 구성")
+    page.table(
+        ["역할", "개수", "컬럼"],
+        [
+            ["모델 피처 (직접)", "13", "recent_sales_30m · previous_sales_30m · recent_tickets_30m · current_stock · "
+                                      "initial_stock · minutes_to_close · festival_day · is_weekend · event_ending_soon · "
+                                      "precipitation_probability · temperature · discount_rate · campus_scale"],
+            ["모델 피처 (파생)", "2", "new_discount_rate ← discount_elapsed_minutes · category_code ← menu_category"],
+            ["타깃", "2", "future_sales_30m (관측) · future_latent_30m (검열 이전, 입력 금지)"],
+            ["가드·설계", "5", "censored_window_flag · stockout_flag · discount_arm · assigned_discount_rate · discount_elapsed_minutes"],
+            ["식별·메타", "13", "run_id · festival_year · university_id · booth_id · menu_id · observation_timestamp 등"],
+            ["미사용 보관", "4", "day_of_week · recent_sales_5m · booth_ticket_count_30m · booth_unique_menu_count_1m"],
+        ],
+        [230, 90, 1180],
+        row_height=78,
+    )
+    page.note(
+        "미사용 4열은 버린 것이 아니라 근거를 달아 보류한 것이다. day_of_week는 is_weekend와 r=0.881, "
+        "booth_unique_menu_count_1m은 MVP가 부스당 메뉴 1개여서 상수가 된다."
+    )
+    pages.append(page.save(OUTPUT_DIR / "master_page_12.png"))
+
+    # --- P13 feature spec ----------------------------------------------------
+    page = Page(font_set)
+    page.title("부록 D.2 모델 피처 15개", "정의와 학습·추론 출처")
+    page.table(
+        ["피처", "의미", "학습 시 출처", "추론 시 출처"],
+        [list(row) for row in FEATURE_SPEC],
+        [300, 380, 400, 420],
+        row_height=44,
+    )
+    page.body(
+        "학습과 추론이 같은 정의를 쓰도록 campus_scale은 공용 함수로, 신규 할인 판정 기준(30분)은 "
+        "공용 상수로 둔다. 테스트가 추론 피처의 이름과 순서까지 FEATURES와 대조한다."
+    )
+    page.heading("D.3 한 행 실제 예시")
+    page.table(["구분", "값"], [list(row) for row in SAMPLE_ROW], [240, 1260], row_height=48)
+    pages.append(page.save(OUTPUT_DIR / "master_page_13.png"))
+
+    # --- P14 limits ----------------------------------------------------------
     page = Page(font_set)
     page.title("8. 한계와 다음 단계", "지금 주장할 수 없는 것")
     page.heading("8.1 한계")
@@ -483,7 +555,7 @@ def build_pages(m: dict, study: dict, font_set: dict) -> list[Path]:
         "남는 것 자체가 처음 만들어지는 자료다. 예측 정확도는 그 다음 단계의 이야기다. "
         "측정 체계가 없는 영역에서는 측정 자체가 첫 번째 기여가 된다."
     )
-    pages.append(page.save(OUTPUT_DIR / "master_page_12.png"))
+    pages.append(page.save(OUTPUT_DIR / "master_page_14.png"))
     return pages
 
 
