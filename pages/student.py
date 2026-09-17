@@ -21,6 +21,7 @@ page_header(
 )
 
 promotions = db.get_active_promotions()
+reward = db.get_reward_progress()
 st.markdown("### 지금 받을 수 있는 혜택")
 if not promotions:
     st.markdown(
@@ -57,16 +58,22 @@ with tab_quiz:
     answer = st.radio("정답 선택", ["축제의 재미", "예상 잔여재고", "공연 시간"], horizontal=True, label_visibility="collapsed")
     if st.button("정답 확인"):
         if answer == "예상 잔여재고":
-            st.session_state["quiz_coupon"] = True
-            st.success("정답! A구역 혜택 쿠폰을 받았습니다. (Demo Coupon)")
+            reward = db.complete_quiz()
+            st.success("정답! A구역 혜택 쿠폰이 발급·저장되었습니다. (Demo Coupon)")
         else:
             st.warning("한 번 더 생각해 보세요!")
-    if st.session_state.get("quiz_coupon"):
-        st.code("ZERO-A-1000 · Demo Coupon", language=None)
+    if int(reward.get("quiz_completed") or 0):
+        st.code(f"{reward['coupon_code']} · Demo Coupon", language=None)
 with tab_stamp:
     st.markdown("**C구역 방문 시 Stamp ×2**")
-    st.progress(0.6, text="3 / 5 stamps")
-    st.caption("향후 혼잡·수요가 낮은 구역으로 방문을 유도하는 Gamified Demand Routing 모듈입니다.")
+    stamps = int(reward.get("stamps") or 0)
+    st.progress(stamps / 5, text=f"{stamps} / 5 stamps")
+    if stamps < 5 and st.button("📍 C구역 QR 스캔 데모", width="stretch"):
+        db.add_stamp()
+        st.rerun()
+    elif stamps >= 5:
+        st.success(f"스탬프 완주! 쿠폰 `{reward['coupon_code']}`이 발급되었습니다.")
+    st.caption("스탬프와 쿠폰 상태는 Demo DB에 저장되며 새로고침 후에도 유지됩니다.")
 
 if promotions:
     st.page_link("pages/simulation.py", label="할인 이후 학생 반응 시뮬레이션 →", icon="🧪")

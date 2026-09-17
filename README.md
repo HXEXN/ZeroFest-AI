@@ -18,18 +18,18 @@
 ## Core MVP
 
 - 부스명·구역·메뉴·가격·초기재고 등록
-- 판매 +1/+5/+10, 재고 ±10 원클릭 운영 입력
+- 판매 +1/+5/+10, 재고 ±10 원클릭 입력과 실재고 직접 교정
 - 30분·1시간·행사 종료 판매량 및 잔여재고 예측 (2023–2025 합성 이력 학습 Gradient Boosting)
 - 환경변수로 조정 가능한 LOW/MEDIUM/HIGH 폐기위험
 - 실제 LangGraph StateGraph 워크플로
 - 운영자 승인 전에는 실행되지 않는 할인 Action
 - 승인 직후 학생 화면에 6,000원 → 4,800원 할인 노출
 - 할인 승인을 새 개입으로 인식해 다음 30분 수요 예측을 즉시 상향
-- 실제 DB 스냅샷만 사용하는 Admin AI Chat
+- 실제 DB 스냅샷만 사용하는 전용 AI 운영 Copilot (전체 축제/부스 범위 선택, 근거 공개)
 - Agent가 큐에 넣은 Action과 근거를 그대로 노출하는 Control Tower
 - 판매·재고 스냅샷이 실제로 기록되는 Before/After 시뮬레이션과 한 번 클릭 Reset
 - 부스 상태에서 계산하는 구역 지도 (구역 단위 · 정밀 위치 미수집)
-- Quiz, Stamp Tour 확장 모듈 (Mock · 쿠폰 정산 미연동)
+- Quiz 쿠폰과 Stamp Tour 진행 상태의 Demo DB 저장 (외부 쿠폰 정산은 미연동)
 - 과거 데이터·Pipeline·Model Registry·LangGraph Audit 전용 AI Ops Console
 
 ## Architecture
@@ -128,7 +128,7 @@ python scripts/build_data_requirement_report.py
 
 MVP는 작은 데이터에 과도한 딥러닝을 적용하지 않고 `GradientBoostingRegressor`를 사용한다. 입력 Feature 15개는 최근/이전 30분 판매량, **최근 30분 주문 건수**, 현재·준비 재고, 당일 종료까지 남은 시간, 축제 일차, 주말 여부, 공연 종료 임박, 1시간 뒤 강수확률, 기온, 적용 중인 할인율, 신규 적용 할인율, 메뉴 유형, 캠퍼스 규모다. LLM은 판매량을 예측하지 않는다.
 
-시각을 중복 표현하던 Feature(`hour`, `minute_of_day`, `seconds_to_close`, `minutes_to_festival_end`, `second_of_minute`)는 절대 상관이 최대 1.000이고 분산팽창계수가 무한대여서 제거했다. `recent_tickets_30m`은 운영자가 `1·2·3·5개 주문` 버튼을 누른 횟수다. 한 번 누르면 한 팀의 주문이므로, 판매량과 별개로 장바구니 크기가 관측된다. `new_discount_rate`는 승인된 지 30분이 지나지 않은 할인을 분리한다. 이미 30분 이상 적용된 할인은 최근 판매량에 반영되어 있어, 이를 구분하지 않으면 모델이 "지금 할인하면 어떻게 되는가"에 답하지 못한다.
+시각을 중복 표현하던 Feature(`hour`, `minute_of_day`, `seconds_to_close`, `minutes_to_festival_end`, `second_of_minute`)는 절대 상관이 최대 1.000이고 분산팽창계수가 무한대여서 제거했다. `recent_tickets_30m`은 운영자가 `1·5·10개 주문` 버튼을 누른 횟수다. 한 번 누르면 한 팀의 주문이므로, 판매량과 별개로 장바구니 크기가 관측된다. `new_discount_rate`는 승인된 지 30분이 지나지 않은 할인을 분리한다. 이미 30분 이상 적용된 할인은 최근 판매량에 반영되어 있어, 이를 구분하지 않으면 모델이 "지금 할인하면 어떻게 되는가"에 답하지 못한다.
 
 기본 모델은 **2023–2025년 3개 가상 대학 × 3일 축제의 15,552개 합성 레코드**를 학습한다. 3개 연도 × 3개 캠퍼스 = 9개 칸은 각각 **서로 다른 시드의 독립 시뮬레이션**이다. 한 번의 실행을 복사해 타깃만 스칼라 배하면 검증 연도가 학습 연도의 결정론적 변환이 되어, 작년 행을 복사하는 규칙만으로 R² 1.000이 나오기 때문이다.
 
@@ -160,6 +160,8 @@ python scripts/train_model.py
 - `WEATHER_PROVIDER=open-meteo`: Open-Meteo API Adapter 사용, 실패 시 Mock 자동 복귀
 - `OPENAI_API_KEY` 없음/오류: 현재 SQLite 예측 스냅샷 기반 Grounded Local Chat
 - 키 존재: 선택한 LLM은 같은 스냅샷을 근거로 설명만 생성
+- Copilot 지원 질의: 전체 운영 브리핑, 위험 우선순위, 할인 근거, 품절 예상 시각, 날씨 영향, 추천 Action, 이관 후보
+- 답변마다 현재 재고·30분 판매/예측·종료 잔여/위험도 근거를 함께 표시
 
 키는 `.env`에만 두며 코드에 넣지 않는다.
 

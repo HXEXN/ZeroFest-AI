@@ -7,9 +7,10 @@
 | Stitch Reference | Streamlit 화면 | 실제 연결 기능 |
 |---|---|---|
 | 통합 게이트웨이 | `app.py` | 역할별 분리 진입, 실시간 데모 상태, 데이터 출처 경고 |
-| 관리자 관제 | `pages/admin.py` | 부스별 예측·위험·Agent Action·Grounded Chat |
-| Booth Fast POS | `pages/operator.py` | 56px 터치 입력, 판매/재고 동시 갱신, 승인 기반 할인 |
-| 학생 모바일 | `pages/student.py` | 승인 할인, Mock Map, Quiz·Stamp 수요 라우팅 |
+| 관리자 관제 | `pages/admin.py` | 부스별 예측·위험·Agent Action·Copilot 즉시 진입 |
+| AI 운영 대화 | `pages/chat.py` | 전체/부스 범위, 빠른 질문, 근거 공개, 실행권한 분리 |
+| Booth Fast POS | `pages/operator.py` | 56px 터치 입력, 실재고 교정, 승인 할인·종료 |
+| 학생 모바일 | `pages/student.py` | 승인 할인, 구역 지도, DB 저장 Quiz·Stamp 보상 |
 | AI Engine Core | `pages/ai_ops.py` | 데이터 품질, 학습 파이프라인, 모델 Registry, Agent Audit |
 
 ## 인간공학 및 휴먼 인터페이스 원칙
@@ -22,6 +23,7 @@
 6. **상태의 직접성**: 승인 직후 학생 가격이 바뀌고, 학생 반응 후 Before/After와 Dashboard가 같은 SQLite 상태를 읽는다.
 7. **접근성**: 고대비 Deep Emerald/Slate, 48px 이상 기본 버튼, 키보드 Focus Ring, Reduced Motion 대응을 적용한다.
 8. **신뢰 형성**: 예측 근거, 모델 출처, 합성 데이터 경고와 LLM 역할 제한을 행동 지점 가까이에 둔다.
+9. **대화 안전성**: Copilot 답변은 현재 DB 스냅샷에서 먼저 생성하고, LLM은 선택적 설명 계층으로만 사용한다. 채팅에는 Action 실행 권한을 주지 않는다.
 
 ## Design Tokens
 
@@ -35,4 +37,3 @@
 - Panel radius: 16px, nested controls: 8–12px, status badges: full pill
 
 색상만으로 상태를 전달하지 않으며 HIGH/MEDIUM/LOW 텍스트와 설명을 항상 병기한다.
-

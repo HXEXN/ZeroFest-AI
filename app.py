@@ -71,5 +71,13 @@ for column, icon, title, body, page, label in roles:
         )
         st.page_link(page, label=label, width="stretch")
 
+st.markdown(
+    '<div class="zf-copilot"><div class="zf-kicker">NEW · GROUNDED OPERATIONS COPILOT</div>'
+    '<strong>현재 재고·예측·날씨·공연·Action Queue를 대화로 조회하세요.</strong>'
+    '<div class="zf-muted">“어느 부스가 위험해?”, “몇 시에 품절돼?”, “왜 할인해야 해?”에 실제 운영 상태로 답합니다.</div></div>',
+    unsafe_allow_html=True,
+)
+st.page_link("pages/chat.py", label="✨ AI 운영 Copilot과 대화하기", width="stretch")
+
 st.divider()
 st.caption("ZeroFest AI · EST AI Challengers 2기 Hackathon MVP · Sample / Synthetic Festival Dataset")

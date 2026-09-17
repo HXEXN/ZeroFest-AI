@@ -119,6 +119,13 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS reward_progress (
+    participant_id TEXT PRIMARY KEY,
+    stamps INTEGER NOT NULL DEFAULT 0,
+    quiz_completed INTEGER NOT NULL DEFAULT 0,
+    coupon_code TEXT,
+    updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS data_sources (
     source_id TEXT PRIMARY KEY,
     source_name TEXT NOT NULL,
@@ -553,6 +560,77 @@ def adjust_stock(booth_id: str, delta: int, db_path: Path | str = DB_PATH) -> No
                VALUES (?, ?, ?, ?, ?)""",
             (get_demo_time(db_path).isoformat(), booth_id, state["menu_id"], new_stock, max(delta, 0)),
         )
+
+
+def set_stock(booth_id: str, quantity: int, db_path: Path | str = DB_PATH) -> None:
+    """Replace the physical stock count with an operator-audited value."""
+    if quantity < 0:
+        raise ValueError("재고는 음수가 될 수 없습니다.")
+    state = get_booth_state(booth_id, db_path)
+    with connection(db_path) as conn:
+        conn.execute(
+            """INSERT INTO inventory_snapshots
+               (timestamp, booth_id, menu_id, current_stock, additional_stock)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                get_demo_time(db_path).isoformat(), booth_id, state["menu_id"], int(quantity),
+                max(0, int(quantity) - int(state["current_stock"])),
+            ),
+        )
+
+
+def end_promotion(booth_id: str, db_path: Path | str = DB_PATH) -> None:
+    """End the active promotion without deleting its audit history."""
+    with connection(db_path) as conn:
+        conn.execute(
+            "UPDATE promotions SET status='ENDED' WHERE booth_id=? AND status='ACTIVE'",
+            (booth_id,),
+        )
+
+
+def get_reward_progress(
+    participant_id: str = "demo-student", db_path: Path | str = DB_PATH
+) -> dict[str, Any]:
+    row = query_one("SELECT * FROM reward_progress WHERE participant_id=?", (participant_id,), db_path)
+    if row:
+        return row
+    now = get_demo_time(db_path).isoformat()
+    with connection(db_path) as conn:
+        conn.execute(
+            "INSERT INTO reward_progress VALUES (?, 3, 0, NULL, ?)",
+            (participant_id, now),
+        )
+    return query_one("SELECT * FROM reward_progress WHERE participant_id=?", (participant_id,), db_path) or {}
+
+
+def complete_quiz(
+    participant_id: str = "demo-student", db_path: Path | str = DB_PATH
+) -> dict[str, Any]:
+    """Issue one deterministic demo coupon and persist it across page reloads."""
+    progress = get_reward_progress(participant_id, db_path)
+    coupon = progress.get("coupon_code") or "ZERO-A-1000"
+    with connection(db_path) as conn:
+        conn.execute(
+            """UPDATE reward_progress
+               SET quiz_completed=1, coupon_code=?, updated_at=? WHERE participant_id=?""",
+            (coupon, get_demo_time(db_path).isoformat(), participant_id),
+        )
+    return get_reward_progress(participant_id, db_path)
+
+
+def add_stamp(
+    participant_id: str = "demo-student", db_path: Path | str = DB_PATH
+) -> dict[str, Any]:
+    progress = get_reward_progress(participant_id, db_path)
+    stamps = min(5, int(progress.get("stamps") or 0) + 1)
+    coupon = progress.get("coupon_code") or ("ZERO-STAMP-FREE" if stamps >= 5 else None)
+    with connection(db_path) as conn:
+        conn.execute(
+            """UPDATE reward_progress
+               SET stamps=?, coupon_code=?, updated_at=? WHERE participant_id=?""",
+            (stamps, coupon, get_demo_time(db_path).isoformat(), participant_id),
+        )
+    return get_reward_progress(participant_id, db_path)
 
 
 STUDENT_RESPONSE_WINDOW_MINUTES = 30

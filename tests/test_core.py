@@ -6,7 +6,7 @@ from agents.graph import run_workflow
 from agents.rules import action_candidates
 from models.waste_risk import classify_waste_risk
 from services import database as db
-from services.chat import ask_admin
+from services.chat import ask_admin, ask_operations
 from services.mlops import data_quality_report, run_training_pipeline
 from models.demand_model import (
     FEATURES,
@@ -114,6 +114,42 @@ def test_grounded_chat_uses_current_prediction(tmp_path, monkeypatch):
     assert f"{remaining}개" in answer
     assert "운영자가 승인" in answer
     assert engine == "Grounded local fallback"
+
+
+def test_operations_copilot_answers_stockout_and_exposes_evidence(tmp_path, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = tmp_path / "copilot.db"
+    db.reset_demo(path)
+    for booth in db.get_booths(path):
+        run_workflow(booth["booth_id"], db_path=path)
+    answer, engine, evidence = ask_operations(
+        "재고는 언제 다 소진될 것으로 보여?", booth_id="booth-chicken", db_path=path
+    )
+    assert "닭꼬치" in answer
+    assert "품절" in answer
+    assert engine == "Grounded Operations Engine"
+    assert any("현재 재고" in item for item in evidence)
+
+
+def test_operator_exact_stock_and_promotion_end_are_persistent(tmp_path):
+    path = tmp_path / "operator-controls.db"
+    db.reset_demo(path)
+    db.set_stock("booth-chicken", 77, path)
+    assert db.get_booth_state("booth-chicken", path)["current_stock"] == 77
+    db.activate_promotion("booth-chicken", 20, path)
+    assert db.get_active_promotions(path)
+    db.end_promotion("booth-chicken", path)
+    assert not db.get_active_promotions(path)
+
+
+def test_student_rewards_persist_in_database(tmp_path):
+    path = tmp_path / "rewards.db"
+    db.reset_demo(path)
+    assert db.get_reward_progress(db_path=path)["stamps"] == 3
+    db.add_stamp(db_path=path)
+    completed = db.add_stamp(db_path=path)
+    assert completed["stamps"] == 5
+    assert completed["coupon_code"] == "ZERO-STAMP-FREE"
 
 
 def test_one_press_is_one_order(tmp_path):

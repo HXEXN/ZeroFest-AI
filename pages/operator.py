@@ -46,8 +46,8 @@ left, right = st.columns([0.82, 1.18], gap="large")
 with left:
     st.markdown("#### 원클릭 운영 입력")
     st.caption("한 번 누르면 한 팀의 주문입니다. 판매량과 재고, 주문 건수가 함께 기록됩니다.")
-    sale_cols = st.columns(4)
-    for column, quantity in zip(sale_cols, [1, 2, 3, 5]):
+    sale_cols = st.columns(3)
+    for column, quantity in zip(sale_cols, [1, 5, 10]):
         if column.button(f"{quantity}개 주문", width="stretch", key=f"sale-{booth_id}-{quantity}"):
             # One press is one party. Recording parties separately from items is
             # what lets the model see basket size, not just sales volume.
@@ -63,6 +63,16 @@ with left:
         db.adjust_stock(booth_id, 10)
         run_workflow(booth_id)
         st.rerun()
+    with st.form(f"exact-stock-{booth_id}"):
+        exact_stock = st.number_input(
+            "실재고 직접 입력", min_value=0, value=int(state["current_stock"]), step=1,
+            help="실사한 수량으로 재고 스냅샷을 교정합니다.",
+        )
+        if st.form_submit_button("실재고 적용", width="stretch"):
+            db.set_stock(booth_id, int(exact_stock))
+            run_workflow(booth_id)
+            st.session_state["operator_notice"] = f"실재고를 {int(exact_stock)}개로 교정했습니다."
+            st.rerun()
     st.caption("입력값은 Demo SQLite 상태에만 저장됩니다.")
 
 with right:
@@ -83,6 +93,9 @@ with right:
         for driver in prediction.get("drivers", []):
             st.markdown(f"- {driver}")
         st.caption(f"Model · {prediction.get('model_source', 'prediction unavailable')}")
+    st.page_link(
+        "pages/chat.py", label="✨ 이 예측을 AI에게 질문하기", icon="💬", width="stretch"
+    )
 
 st.divider()
 st.markdown("#### 승인 대기 Action")
@@ -112,6 +125,11 @@ if active:
         f"🔥 학생 화면 노출 중 · {promo['menu_name']} {promo['price']:,}원 → {promo['sale_price']:,}원 ({promo['discount_rate']}% 할인)"
     )
     st.page_link("pages/student.py", label="학생 화면에서 확인 →", icon="🎓")
+    if st.button("타임세일 종료", width="stretch"):
+        db.end_promotion(booth_id)
+        run_workflow(booth_id)
+        st.session_state["operator_notice"] = "타임세일을 종료하고 정가 운영으로 전환했습니다."
+        st.rerun()
 
 history = [item for item in db.get_actions(booth_id) if item["status"] == "EXECUTED"]
 with st.expander("승인 이력"):

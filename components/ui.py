@@ -50,6 +50,8 @@ CSS = """
     .zf-provenance { display:inline-flex; gap:.45rem; align-items:center; border:1px solid #fed7aa; background:#fff7ed; color:#9a3412; border-radius:999px; padding:.35rem .62rem; font-size:.68rem; font-weight:750; }
     .zf-stage { border:1px solid var(--zf-line); background:#fff; border-radius:12px; padding:.75rem; min-height:92px; }
     .zf-stage-pass { color:#047857; font-weight:800; font-size:.68rem; }
+    .zf-copilot { border:1px solid #bbf7d0; background:linear-gradient(135deg,#f0fdf4 0%,#ffffff 58%,#fff7ed 100%); border-radius:18px; padding:1rem 1.1rem; margin:.7rem 0 1rem; }
+    .zf-copilot strong { color:#004c22; }
     div[data-testid="stMetric"] { background:#fff; border:1px solid var(--zf-line); padding:.92rem; border-radius:14px; box-shadow:0 1px 3px rgba(15,23,42,.035); }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] { font-family:"JetBrains Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; letter-spacing:-.04em; color:var(--zf-ink); }
     div.stButton > button, div[data-testid="stFormSubmitButton"] > button { border-radius:12px; font-weight:750; min-height:48px; border-color:#cbd5e1; }
@@ -65,6 +67,9 @@ CSS = """
         .zf-live { margin-top:.75rem; width:max-content; }
         .zf-title { font-size:1.7rem; }
         .zf-hero { font-size:2.25rem; }
+        div[data-testid="stHorizontalBlock"] { gap:.65rem; }
+        div[data-testid="stMetric"] { padding:.72rem; }
+        .zf-card { padding:.9rem; }
     }
 </style>
 """
@@ -104,6 +109,7 @@ def sidebar(role: str) -> None:
         st.caption(f"현재 화면 · {role}")
         st.page_link("app.py", label="시작 화면", icon="🏠")
         st.page_link("pages/admin.py", label="학생회 Control Tower", icon="📊")
+        st.page_link("pages/chat.py", label="AI 운영 Copilot", icon="✨")
         st.page_link("pages/operator.py", label="부스 운영자", icon="🧑‍🍳")
         st.page_link("pages/student.py", label="학생", icon="🎓")
         st.page_link("pages/simulation.py", label="Before / After", icon="🧪")

@@ -32,6 +32,12 @@ page_header(
     "개별 부스를 넘어 축제 전체의 공급과 수요를 관리합니다. 예측은 ML이, 위험판정은 규칙이, 실행 결정은 사람이 맡습니다.",
 )
 flow_strip()
+st.markdown(
+    '<div class="zf-copilot"><div class="zf-kicker">AI OPERATIONS COPILOT</div>'
+    '<strong>현재 위험·재고·품절 시각·추천 근거를 바로 질문할 수 있습니다.</strong></div>',
+    unsafe_allow_html=True,
+)
+st.page_link("pages/chat.py", label="✨ AI에게 운영 상황 질문하기", width="stretch")
 
 rows = dashboard_rows()
 total_sales = sum(int(row["total_sales"]) for row in rows)
