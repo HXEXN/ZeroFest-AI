@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from agents.graph import ensure_predictions, run_workflow
+from agents.graph import analyze_all, ensure_predictions, run_workflow
 from components.ui import MOBILE_NAV, configure_page, mobile_bottom_nav, mobile_header
 from services import database as db
 
@@ -75,19 +75,41 @@ with st.container(border=True):
         """,
         unsafe_allow_html=True,
     )
-    if st.button("▶ 시뮬레이터 시작", type="primary", width="stretch"):
+        if st.button("▶ 시뮬레이터 시작", type="primary", width="stretch"):
         result = run_workflow("booth-chicken")
-        discount = next((item for item in db.get_actions("booth-chicken", "PENDING") if item["action_type"] == "DISCOUNT"), None)
+        discount = next(
+            (
+                item
+                for item in db.get_actions("booth-chicken", "PENDING")
+                if item["action_type"] == "DISCOUNT"
+            ),
+            None,
+        )
+
         if discount:
             run_workflow("booth-chicken", [discount["action_id"]])
+
         if db.get_active_promotions():
             response = db.simulate_student_response()
             run_workflow("booth-chicken")
             st.session_state["gateway_loop_result"] = response
+            st.rerun()
+
+    # 시연용 초기화 버튼
+    if st.button("↻ 시뮬레이터 초기화", width="stretch"):
+        with st.spinner("19:00 초기 상태로 복원하는 중..."):
+            db.reset_demo()
+            analyze_all()
+
+        st.session_state.clear()
         st.rerun()
+
     if "gateway_loop_result" in st.session_state:
         response = st.session_state["gateway_loop_result"]
-        st.success(f"루프 완료 · {response['sold']}개 판매 반영 · {response['to'][-5:]} 상태로 재예측")
+        st.success(
+            f"루프 완료 · {response['sold']}개 판매 반영 · "
+            f"{response['to'][-5:]} 상태로 재예측"
+        )
 
 st.markdown('<div class="zf-section-title"><strong>🛡 권한별 게이트웨이</strong><span class="zf-pill medium">ROLE ISOLATION</span></div>', unsafe_allow_html=True)
 
