@@ -1,8 +1,9 @@
-"""Judge-friendly end-to-end before/after simulation.
+"""Live POS-linked end-to-end simulation.
 
-The active booth follows the booth selected on the Operator POS.
-The latest-data button explicitly re-runs the prediction/agent pipeline against
-the newest sales and inventory snapshots before rendering the screen.
+Operator POS writes sales/inventory and immediately runs the ML/agent workflow.
+This page does not require a manual refresh button. A Streamlit fragment polls
+the shared SQLite state every 2 seconds so the currently selected POS booth,
+sales, inventory, prediction, actions, and promotion state appear automatically.
 """
 
 from __future__ import annotations
@@ -23,11 +24,7 @@ from components.ui import (
 from services import database as db
 
 
-configure_page(
-    "Before / After",
-    "🧪",
-    mobile=True,
-)
+configure_page("Before / After", "🧪", mobile=True)
 
 db.initialize_database()
 ensure_predictions()
@@ -35,396 +32,279 @@ sidebar("AI Simulation")
 
 mobile_header(
     "ZeroFest 시뮬레이터",
-    "예측 → 승인 → 반응 → 재예측",
-    "AI 연동",
+    "POS → 예측 → 승인 → 반응 → 재예측",
+    "LIVE",
     "시",
 )
 
 page_header(
-    "END-TO-END · JUDGE DEMO",
-    "예측에서 끝나지 않는 Closed Loop",
-    "POS의 최신 판매·재고 상태를 받아 Action과 학생 반응 이후 다시 예측되는 전체 흐름을 확인합니다.",
+    "END-TO-END · LIVE DEMO",
+    "POS 입력이 시뮬레이션에 자동 반영됩니다",
+    "운영자 POS의 판매·재고와 선택 부스를 실시간으로 읽어 같은 ML·Agent 흐름을 보여줍니다.",
 )
 
 flow_strip()
 
+st.markdown(
+    """
+    <style>
+    .sim-live-bar {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        padding:10px 12px;
+        margin:8px 0 12px;
+        border:1px solid #bbf7d0;
+        border-radius:14px;
+        background:#f0fdf4;
+    }
+    .sim-live-left {
+        min-width:0;
+    }
+    .sim-live-title {
+        color:#065f46;
+        font-size:12px;
+        font-weight:850;
+    }
+    .sim-live-booth {
+        margin-top:3px;
+        color:#131b2e;
+        font-size:14px;
+        font-weight:850;
+        overflow:hidden;
+        text-overflow:ellipsis;
+        white-space:nowrap;
+    }
+    .sim-live-badge {
+        flex:0 0 auto;
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:5px 8px;
+        border-radius:999px;
+        background:#d1fae5;
+        color:#047857;
+        font-size:10px;
+        font-weight:900;
+    }
+    .sim-live-dot {
+        width:7px;
+        height:7px;
+        border-radius:50%;
+        background:#10b981;
+        box-shadow:0 0 0 3px #a7f3d0;
+    }
 
-# -------------------------------------------------------------------
-# POS에서 선택한 부스를 Simulation 대상으로 자동 동기화
-# -------------------------------------------------------------------
-
-booths = db.get_booths()
-booth_ids = [item["booth_id"] for item in booths]
-
-labels = {
-    item["booth_id"]: (
-        f"{item['zone']}구역 · "
-        f"{item['booth_name']} "
-        f"({item['menu_name']})"
-    )
-    for item in booths
-}
-
-active_booth_id = st.session_state.get(
-    "active_booth_id",
-    db.get_setting(
-        "active_booth_id",
-        "booth-chicken",
-    ),
+    @media (max-width: 440px) {
+        /* 기존 5열/2단 고정 레이아웃이 좁은 화면에서 깨지지 않도록 완화 */
+        .sim-live-bar {
+            align-items:flex-start;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
-if active_booth_id not in booth_ids:
-    active_booth_id = (
-        "booth-chicken"
-        if "booth-chicken" in booth_ids
-        else booth_ids[0]
+
+def _valid_active_booth() -> tuple[str, dict[str, str]]:
+    """Read the POS-selected booth from shared SQLite state."""
+    booths = db.get_booths()
+    booth_ids = [item["booth_id"] for item in booths]
+    labels = {
+        item["booth_id"]: (
+            f"{item['zone']}구역 · "
+            f"{item['booth_name']} "
+            f"({item['menu_name']})"
+        )
+        for item in booths
+    }
+
+    active = db.get_setting("active_booth_id", "booth-chicken")
+    if active not in booth_ids:
+        active = "booth-chicken" if "booth-chicken" in booth_ids else booth_ids[0]
+        db.set_setting("active_booth_id", active)
+
+    return active, labels
+
+
+@st.fragment(run_every="2s")
+def live_simulation() -> None:
+    """Refresh only the simulation surface every 2 seconds."""
+    booth_id, labels = _valid_active_booth()
+
+    # Keep this session aligned too, while SQLite remains the cross-page source.
+    st.session_state["active_booth_id"] = booth_id
+
+    state = db.get_booth_state(booth_id)
+    prediction = db.get_latest_prediction(booth_id) or {}
+    baseline = db.get_intervention_baseline(booth_id)
+    promotions = [
+        item
+        for item in db.get_active_promotions()
+        if item["booth_id"] == booth_id
+    ]
+
+    # student_response_simulated is historically a global demo flag.
+    # Bind it to the booth that actually ran the response to prevent another
+    # POS booth from incorrectly showing the "re-predicted" step as complete.
+    simulated = (
+        db.get_setting("student_response_simulated", "0") == "1"
+        and db.get_setting("student_response_booth", "") == booth_id
     )
 
-BOOTH_ID = active_booth_id
+    current_remaining = int(prediction.get("expected_remaining", 0))
+    current_risk = str(prediction.get("risk_level", "-"))
 
-st.session_state[
-    "active_booth_id"
-] = BOOTH_ID
-
-db.set_setting(
-    "active_booth_id",
-    BOOTH_ID,
-)
-
-
-# -------------------------------------------------------------------
-# 현재 연동 대상 + 명시적 최신화
-# -------------------------------------------------------------------
-
-with st.container(
-    border=True
-):
-    st.caption(
-        "현재 POS 연동 대상"
+    before_remaining = (
+        int(baseline["expected_remaining"])
+        if baseline
+        else current_remaining
+    )
+    before_risk = (
+        str(baseline["risk_level"])
+        if baseline
+        else current_risk
     )
 
     st.markdown(
-        f"### {labels.get(BOOTH_ID, BOOTH_ID)}"
-    )
-
-    st.caption(
-        "Operator POS에서 선택한 부스를 자동으로 따라갑니다."
-    )
-
-    if st.button(
-        "↻ 최신 POS 데이터 반영",
-        type="primary",
-        width="stretch",
-        key=f"refresh-simulation-{BOOTH_ID}",
-    ):
-        # 최신 sales/inventory snapshot을 다시 읽어
-        # ML + Risk + Agent Action 후보를 새로 계산하고 저장
-        result = run_workflow(
-            BOOTH_ID
-        )
-
-        st.session_state[
-            "simulation_refresh_notice"
-        ] = (
-            f"{labels.get(BOOTH_ID, BOOTH_ID)}의 최신 판매·재고를 기준으로 "
-            f"예측을 다시 계산했습니다. "
-            f"다음 30분 {result['prediction'].get('predicted_sales_30m', 0)}개 · "
-            f"예상 잔여 {result['prediction'].get('expected_remaining', 0)}개"
-        )
-
-        st.rerun()
-
-if "simulation_refresh_notice" in st.session_state:
-    st.success(
-        st.session_state.pop(
-            "simulation_refresh_notice"
-        )
-    )
-
-
-# -------------------------------------------------------------------
-# 최신 DB 상태 재조회
-# -------------------------------------------------------------------
-
-state = db.get_booth_state(
-    BOOTH_ID
-)
-
-prediction = (
-    db.get_latest_prediction(
-        BOOTH_ID
-    )
-    or {}
-)
-
-baseline = (
-    db.get_intervention_baseline(
-        BOOTH_ID
-    )
-)
-
-promotions = [
-    item
-    for item in db.get_active_promotions()
-    if item["booth_id"] == BOOTH_ID
-]
-
-simulated = state[
-    "student_response_simulated"
-]
-
-current_remaining = int(
-    prediction.get(
-        "expected_remaining",
-        0,
-    )
-)
-
-current_risk = str(
-    prediction.get(
-        "risk_level",
-        "-",
-    )
-)
-
-before_remaining = (
-    int(
-        baseline[
-            "expected_remaining"
-        ]
-    )
-    if baseline
-    else current_remaining
-)
-
-before_risk = (
-    str(
-        baseline[
-            "risk_level"
-        ]
-    )
-    if baseline
-    else current_risk
-)
-
-
-# -------------------------------------------------------------------
-# Closed-loop 진행 상태
-# -------------------------------------------------------------------
-
-status_cols = st.columns(
-    5
-)
-
-steps = [
-    (
-        "1",
-        "위험 감지",
-        bool(
-            prediction
-        ),
-    ),
-    (
-        "2",
-        "AI Action",
-        bool(
-            prediction
-        ),
-    ),
-    (
-        "3",
-        "운영자 승인",
-        bool(
-            promotions
-        ),
-    ),
-    (
-        "4",
-        "학생 노출",
-        bool(
-            promotions
-        ),
-    ),
-    (
-        "5",
-        "재예측",
-        bool(
-            simulated
-        ),
-    ),
-]
-
-for column, (
-    number,
-    label,
-    done,
-) in zip(
-    status_cols,
-    steps,
-):
-    column.markdown(
-        f'<div class="zf-card" '
-        f'style="text-align:center;'
-        f'border-color:{"#10b981" if done else "#dce9e3"}">'
-        f'<div style="font-size:1.4rem">'
-        f'{"✓" if done else number}'
-        f'</div><b>{label}</b></div>',
+        f"""
+        <div class="sim-live-bar">
+            <div class="sim-live-left">
+                <div class="sim-live-title">POS 자동 연동</div>
+                <div class="sim-live-booth">{labels.get(booth_id, booth_id)}</div>
+            </div>
+            <div class="sim-live-badge">
+                <span class="sim-live-dot"></span>
+                2초 LIVE
+            </div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
-
-# -------------------------------------------------------------------
-# Before / After
-# -------------------------------------------------------------------
-
-left, right = st.columns(
-    [1.2, 0.8],
-    gap="large",
-)
-
-with left:
-    st.plotly_chart(
-        before_after(
-            before_remaining,
-            current_remaining,
-        ),
-        width="stretch",
-        config={
-            "displayModeBar": False
-        },
+    st.caption(
+        "POS에서 부스를 바꾸거나 판매·재고를 입력하면 별도 버튼 없이 이 화면에 자동 반영됩니다."
     )
 
-    if (
-        baseline
-        and current_remaining
-        < before_remaining
-    ):
-        reduced = (
-            before_remaining
-            - current_remaining
+    # -------------------------------------------------------------
+    # Closed-loop stages
+    # -------------------------------------------------------------
+    status_cols = st.columns(5)
+    steps = [
+        ("1", "위험 감지", bool(prediction)),
+        ("2", "AI Action", bool(prediction)),
+        ("3", "운영자 승인", bool(promotions)),
+        ("4", "학생 노출", bool(promotions)),
+        ("5", "재예측", bool(simulated)),
+    ]
+
+    for column, (number, label, done) in zip(status_cols, steps):
+        column.markdown(
+            f'<div class="zf-card" style="text-align:center;'
+            f'border-color:{"#10b981" if done else "#dce9e3"}">'
+            f'<div style="font-size:1.4rem">{"✓" if done else number}</div>'
+            f'<b>{label}</b></div>',
+            unsafe_allow_html=True,
         )
 
+    # -------------------------------------------------------------
+    # Live POS / forecast state
+    # -------------------------------------------------------------
+    st.markdown(f"#### {db.get_demo_time():%H:%M} · {state['zone']}구역 {state['menu_name']}")
+
+    k1, k2 = st.columns(2)
+    k1.metric("누적 판매", f"{int(state['total_sales']):,}개")
+    k2.metric("현재 재고", f"{int(state['current_stock']):,}개")
+
+    k3, k4 = st.columns(2)
+    k3.metric("최근 30분 판매", f"{int(state['recent_sales_30m']):,}개")
+    k4.metric(
+        "다음 30분 예측",
+        f"{int(prediction.get('predicted_sales_30m') or 0):,}개",
+    )
+
+    # -------------------------------------------------------------
+    # Before / After
+    # -------------------------------------------------------------
+    st.plotly_chart(
+        before_after(before_remaining, current_remaining),
+        width="stretch",
+        config={"displayModeBar": False},
+        key=f"before-after-{booth_id}",
+    )
+
+    if baseline and current_remaining < before_remaining:
+        reduced = before_remaining - current_remaining
         st.caption(
-            f"예측 잔여 {before_remaining}개 → "
-            f"{current_remaining}개 "
-            f"({reduced}개 · "
-            f"{reduced / max(before_remaining, 1):.0%} 감소). "
-            "합성 데이터로 학습한 모델의 예측 비교이며 "
-            "실제 폐기 감소 실증 수치가 아닙니다."
+            f"예측 잔여 {before_remaining}개 → {current_remaining}개 "
+            f"({reduced}개 · {reduced / max(before_remaining, 1):.0%} 감소). "
+            "합성 데이터 기반 모델 예측 비교이며 실제 폐기 감소 실증 수치가 아닙니다."
         )
-
     else:
         st.caption(
-            "할인을 승인하면 개입 전 예측과 비교할 수 있습니다. "
-            "모든 값은 합성 데이터 기반 예측입니다."
+            "운영자가 할인 Action을 승인하면 개입 전 예측과 현재 예측을 비교합니다."
         )
-
-with right:
-    st.markdown(
-        f"#### {db.get_demo_time():%H:%M} · "
-        f"{state['zone']}구역 "
-        f"{state['menu_name']}"
-    )
-
-    st.markdown(
-        f"- 누적 판매 **{state['total_sales']}개**\n"
-        f"- 현재 재고 **{state['current_stock']}개**\n"
-        f"- 최근 30분 판매 **{state['recent_sales_30m']}개** "
-        f"(이전 {state['previous_sales_30m']}개)\n"
-        f"- 다음 30분 예측 "
-        f"**{prediction.get('predicted_sales_30m', '-')}개**"
-    )
 
     if baseline:
         st.info(
-            f"AI 적용 전 · "
-            f"{baseline['timestamp'][-5:]} 기준 "
-            f"예상 잔여 **{before_remaining}개** · "
-            f"{before_risk}"
+            f"AI 적용 전 · {baseline['timestamp'][-5:]} 기준 "
+            f"예상 잔여 **{before_remaining}개** · {before_risk}"
         )
 
     tone = {
         "HIGH": st.error,
         "MEDIUM": st.warning,
         "LOW": st.success,
-    }.get(
-        current_risk,
-        st.info,
-    )
+    }.get(current_risk, st.info)
 
     tone(
-        f"현재 예측 · 예상 잔여 "
-        f"**{current_remaining}개** · "
-        f"{current_risk}"
+        f"현재 예측 · 예상 잔여 **{current_remaining}개** · {current_risk}"
     )
 
-
-    # ---------------------------------------------------------------
-    # 학생 반응
-    # ---------------------------------------------------------------
-
-    if (
-        promotions
-        and not simulated
-    ):
+    # -------------------------------------------------------------
+    # Approved promotion → student response → re-prediction
+    # -------------------------------------------------------------
+    if promotions and not simulated:
         promo = promotions[0]
 
         st.success(
-            f"{promo['discount_rate']}% 할인이 "
-            f"학생 화면에 노출되었습니다. "
-            f"({promo['price']:,}원 → "
-            f"{promo['sale_price']:,}원)"
+            f"{promo['discount_rate']}% 할인이 학생 화면에 노출 중입니다. "
+            f"({promo['price']:,}원 → {promo['sale_price']:,}원)"
         )
 
         if st.button(
             "학생 반응 발생 → 재예측",
             type="primary",
             width="stretch",
+            key=f"student-response-{booth_id}",
         ):
-            # simulate_student_response()가 어느 부스를 사용할지 명시
-            db.set_setting(
-                "student_response_booth",
-                BOOTH_ID,
-            )
+            # Explicitly bind the simulated response to the live POS booth.
+            db.set_setting("student_response_booth", booth_id)
 
-            result = (
-                db.simulate_student_response()
-            )
+            result = db.simulate_student_response()
+            run_workflow(booth_id)
 
-            run_workflow(
-                BOOTH_ID
-            )
-
-            st.session_state[
-                "last_response"
-            ] = result
-
-            st.rerun()
+            st.session_state["last_response"] = result
+            st.rerun(scope="fragment")
 
     elif simulated:
-        result = st.session_state.get(
-            "last_response"
-        )
+        result = st.session_state.get("last_response")
 
-        if result and result.get(
-            "booth_id"
-        ) == BOOTH_ID:
+        if result and result.get("booth_id") == booth_id:
             st.caption(
-                f"{result['from'][-5:]} → "
-                f"{result['to'][-5:]} 사이 "
-                f"할인 적용 상태로 "
-                f"{result['sold']}개가 판매된 것으로 "
-                "시뮬레이션했습니다."
+                f"{result['from'][-5:]} → {result['to'][-5:]} 사이 "
+                f"{result['sold']}개 판매가 반영되었습니다."
             )
 
-        st.caption(
-            "판매·재고 스냅샷이 기록된 뒤 "
-            "같은 파이프라인이 새 상태에서 다시 예측했습니다."
+        st.success(
+            "판매·재고 스냅샷 반영 후 동일 ML/Agent 파이프라인으로 재예측되었습니다."
         )
 
     else:
         st.warning(
-            "먼저 현재 POS 부스의 할인 Action을 운영자 화면에서 승인해 주세요."
+            "현재 POS 부스에서 먼저 할인 Action을 승인하면 학생 반응 단계가 활성화됩니다."
         )
 
         st.page_link(
@@ -434,24 +314,22 @@ with right:
             width="stretch",
         )
 
+    with st.expander("LIVE 연동 확인"):
+        st.write(f"선택 부스 ID: `{booth_id}`")
+        st.write(f"누적 판매: **{state['total_sales']}개**")
+        st.write(f"현재 재고: **{state['current_stock']}개**")
+        st.write(f"최근 30분 판매: **{state['recent_sales_30m']}개**")
+        st.write(
+            f"최신 ML 예측: 다음 30분 **{prediction.get('predicted_sales_30m', 0)}개**, "
+            f"종료 잔여 **{current_remaining}개**"
+        )
 
-st.divider()
 
-st.markdown(
-    "### 발표용 시연 흐름"
-)
-
-st.markdown(
-    f"1. **Operator POS**에서 `{labels.get(BOOTH_ID, BOOTH_ID)}`의 판매를 입력합니다.\n"
-    "2. **Simulation**으로 이동하면 같은 부스가 자동 선택되고 최신 판매·재고를 읽습니다.\n"
-    "3. `↻ 최신 POS 데이터 반영`을 누르면 ML·Risk·Agent를 다시 실행합니다.\n"
-    "4. **Operator**에서 할인 Action을 승인하면 학생 화면에 노출됩니다.\n"
-    "5. `학생 반응 발생 → 재예측`으로 판매·재고 변화와 재예측을 확인합니다."
-)
+live_simulation()
 
 st.caption(
-    "POS 입력값과 Simulation은 동일한 SQLite sales/inventory snapshot을 사용합니다. "
-    "화면 갱신이 필요한 경우 '최신 POS 데이터 반영' 버튼으로 명시적으로 재예측합니다."
+    "LIVE 모드는 2초마다 DB의 최신 상태만 다시 읽습니다. "
+    "ML 재계산 자체는 POS 판매·재고 입력 시 즉시 실행되므로 불필요한 반복 학습/예측 호출을 만들지 않습니다."
 )
 
 mobile_bottom_nav(
