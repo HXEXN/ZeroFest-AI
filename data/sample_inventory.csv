@@ -1,0 +1,6 @@
+timestamp,booth_id,menu_id,current_stock,additional_stock
+2026-05-22T19:00:00,booth-chicken,menu-chicken,180,0
+2026-05-22T19:00:00,booth-drink,menu-drink,40,0
+2026-05-22T19:00:00,booth-tteok,menu-tteok,90,0
+2026-05-22T19:00:00,booth-waffle,menu-waffle,52,0
+

@@ -1,0 +1,5 @@
+event_id,event_name,zone,start_time,end_time,expected_crowd
+event-main,메인 아티스트 공연,Main Stage,2026-05-22T18:00:00,2026-05-22T20:00:00,3000
+event-busking,B구역 버스킹,B,2026-05-22T19:30:00,2026-05-22T21:00:00,700
+event-dj,피날레 DJ 공연,Main Stage,2026-05-22T20:30:00,2026-05-22T21:30:00,2200
+

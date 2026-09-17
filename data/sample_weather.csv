@@ -1,0 +1,6 @@
+timestamp,temperature,precipitation_probability,rainfall,humidity,provider
+2026-05-22T18:00:00,24.0,20,0.0,58,Mock Weather
+2026-05-22T19:00:00,23.0,45,0.0,64,Mock Weather
+2026-05-22T20:00:00,21.5,80,2.5,78,Mock Weather
+2026-05-22T21:00:00,20.5,85,4.0,83,Mock Weather
+

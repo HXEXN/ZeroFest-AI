@@ -1,0 +1,13 @@
+.env
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.streamlit/secrets.toml
+data/zerofest.db
+data/freshretailnet_*.parquet
+models/artifacts/
+outputs/
+.docx_work/
+.viz_preview/
