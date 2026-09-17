@@ -11,11 +11,16 @@ Goals:
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import Iterator
+
+
+SERVER_INSTANCE_ID = uuid.uuid4().hex[:10]
 
 
 TRIGGER_SQL = """
@@ -200,6 +205,7 @@ def install_sqlite_sync(db: ModuleType) -> None:
             "journal_mode": journal_mode,
             "busy_timeout_ms": busy_timeout,
             "runtime_revision": get_runtime_revision(path),
+            "server_instance_id": SERVER_INSTANCE_ID,
         }
 
     def _seed_demo_in_transaction(
@@ -442,8 +448,129 @@ def install_sqlite_sync(db: ModuleType) -> None:
 
             _seed_demo_in_transaction(conn)
 
+    def publish_pos_sync_event(
+        event_type: str,
+        booth_id: str,
+        *,
+        quantity: int | None = None,
+        db_path: Path | str = db.DB_PATH,
+    ) -> dict[str, object]:
+        """Persist a compact POS event that Simulation can verify independently."""
+        state = db.get_booth_state(booth_id, db_path)
+        prediction = db.get_latest_prediction(booth_id, db_path) or {}
+
+        revision_before_event = get_runtime_revision(db_path)
+        event: dict[str, object] = {
+            "event_id": uuid.uuid4().hex[:10],
+            "event_type": event_type,
+            "booth_id": booth_id,
+            "quantity": quantity,
+            "total_sales": int(state.get("total_sales") or 0),
+            "current_stock": int(state.get("current_stock") or 0),
+            "recent_sales_30m": int(state.get("recent_sales_30m") or 0),
+            "predicted_sales_30m": int(prediction.get("predicted_sales_30m") or 0),
+            "expected_remaining": int(prediction.get("expected_remaining") or 0),
+            "revision_before_event": revision_before_event,
+            "demo_time": db.get_demo_time(db_path).isoformat(timespec="seconds"),
+            "server_instance_id": SERVER_INSTANCE_ID,
+        }
+
+        # This setting write is itself revision-tracked by the trigger.
+        db.set_setting(
+            "last_pos_sync_event",
+            json.dumps(event, ensure_ascii=False),
+            db_path,
+        )
+        event["revision_after_event"] = get_runtime_revision(db_path)
+        return event
+
+    def get_last_pos_sync_event(
+        db_path: Path | str = db.DB_PATH,
+    ) -> dict[str, object] | None:
+        raw = db.get_setting("last_pos_sync_event", "", db_path)
+        if not raw:
+            return None
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        return value if isinstance(value, dict) else None
+
+    def verify_pos_sim_sync(
+        booth_id: str,
+        db_path: Path | str = db.DB_PATH,
+    ) -> dict[str, object]:
+        """Compare the last POS write marker with the current Simulation-visible state."""
+        status = sqlite_sync_status(db_path)
+        event = get_last_pos_sync_event(db_path)
+        state = db.get_booth_state(booth_id, db_path)
+        prediction = db.get_latest_prediction(booth_id, db_path) or {}
+
+        wal_ok = str(status.get("journal_mode", "")).lower() == "wal"
+        revision = int(status.get("runtime_revision") or 0)
+
+        event_seen = bool(event)
+        same_booth = bool(event) and event.get("booth_id") == booth_id
+        revision_ok = (
+            bool(event)
+            and revision > int(event.get("revision_before_event") or -1)
+        )
+
+        state_ok = False
+        prediction_ok = False
+        if event and same_booth:
+            event_type = str(event.get("event_type") or "")
+            event_sales = int(event.get("total_sales") or 0)
+            event_stock = int(event.get("current_stock") or 0)
+            current_sales = int(state.get("total_sales") or 0)
+            current_stock = int(state.get("current_stock") or 0)
+
+            if event_type == "sale":
+                # Later student-response sales may advance the world further.
+                state_ok = (
+                    current_sales >= event_sales
+                    and current_stock <= event_stock
+                )
+            elif event_type in {"stock_minus", "stock_plus", "stock_set"}:
+                # A later event may move stock again, but never before the marker revision.
+                state_ok = revision_ok
+            else:
+                state_ok = revision_ok
+
+            # Prediction is regenerated on POS write. Later re-prediction is also valid.
+            prediction_ok = bool(prediction) and revision_ok
+
+        sync_ok = bool(
+            wal_ok
+            and event_seen
+            and same_booth
+            and revision_ok
+            and state_ok
+            and prediction_ok
+        )
+
+        return {
+            "sync_ok": sync_ok,
+            "wal_ok": wal_ok,
+            "event_seen": event_seen,
+            "same_booth": same_booth,
+            "revision_ok": revision_ok,
+            "state_ok": state_ok,
+            "prediction_ok": prediction_ok,
+            "runtime_revision": revision,
+            "server_instance_id": status.get("server_instance_id"),
+            "journal_mode": status.get("journal_mode"),
+            "busy_timeout_ms": status.get("busy_timeout_ms"),
+            "event": event,
+            "state": state,
+            "prediction": prediction,
+        }
+
     db.initialize_database = initialize_database
     db.reset_demo = reset_demo
     db.get_runtime_revision = get_runtime_revision
     db.sqlite_sync_status = sqlite_sync_status
+    db.publish_pos_sync_event = publish_pos_sync_event
+    db.get_last_pos_sync_event = get_last_pos_sync_event
+    db.verify_pos_sim_sync = verify_pos_sim_sync
     db._SQLITE_SYNC_PATCHED = True
