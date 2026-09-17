@@ -14,6 +14,9 @@ data/synthetic_festival_minute_snapshot.csv
 data/synthetic_festival_event_log.csv
 data/freshretailnet_*.parquet
 models/artifacts/
-outputs/
+# Analysis outputs are reproducible and normally excluded. The report linked
+# from README is the published exception and must exist in GitHub.
+outputs/*
+!outputs/ZeroFest_데이터_요구량_검증_보고서.docx
 .docx_work/
 .viz_preview/

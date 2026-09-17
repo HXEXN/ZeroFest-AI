@@ -100,7 +100,7 @@ python scripts/run_data_requirement_study.py     # 약 2분
 python scripts/build_data_requirement_report.py
 ```
 
-전체 결과는 [ZeroFest 데이터 요구량 검증 보고서](outputs/ZeroFest_데이터_요구량_검증_보고서.docx)에 있다. 여기서 말하는 "실데이터"도 분포를 이동시킨 합성 축제이므로, 실제 POS 데이터가 확보되면 같은 실험을 그대로 다시 돌려 검증해야 한다.
+전체 결과는 [ZeroFest 데이터 요구량 검증 보고서 DOCX 다운로드](outputs/ZeroFest_데이터_요구량_검증_보고서.docx?raw=1)에서 확인할 수 있다. 여기서 말하는 "실데이터"도 분포를 이동시킨 합성 축제이므로, 실제 POS 데이터가 확보되면 같은 실험을 그대로 다시 돌려 검증해야 한다.
 
 ## GitHub 배포 준비
 

@@ -115,9 +115,12 @@ def write_document(pages: list[Path], output: Path) -> None:
     section.top_margin = section.bottom_margin = Inches(0.3)
     section.left_margin = section.right_margin = Inches(0.3)
     width = section.page_width - section.left_margin - section.right_margin
-    for index, page in enumerate(pages):
+    # Each raster page already consumes the available page body. Adding an
+    # explicit page-break paragraph after it makes Word/LibreOffice place that
+    # paragraph on the following page and then break again, producing a blank
+    # page between every report page. Natural pagination keeps this at one
+    # source image per Word page.
+    for page in pages:
         paragraph = document.add_paragraph()
         paragraph.add_run().add_picture(str(page), width=width)
-        if index < len(pages) - 1:
-            document.add_page_break()
     document.save(output)
